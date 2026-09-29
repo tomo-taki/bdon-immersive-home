@@ -1,4 +1,4 @@
-// main.js — Our Notes Wallpaper (Windows web track), Electron main process.
+// main.js — BDON Immersive Home (Windows web track), Electron main process.
 //
 // One frameless, click-through BrowserWindow per display, attached behind the
 // desktop icons via the WorkerW trick (worker-w.js). The window loads the same
@@ -157,7 +157,7 @@ function makeWallpaperWindow(display) {
     movable: false,
     hasShadow: false,
     fullscreenable: false,
-    title: "OurNotesWallpaper",
+    title: "BDONImmersiveHome",
     webPreferences: {
       preload: path.join(APP_DIR, "preload-wallpaper.js"),
       contextIsolation: true,
@@ -508,7 +508,7 @@ function updateTrayMenu() {
   ]);
   tray.setContextMenu(menu);
   const spot = currentSpot();
-  tray.setToolTip(spot ? `Our Notes — ${spot.name}` : "Our Notes Wallpaper");
+  tray.setToolTip(spot ? `Our Notes — ${spot.name}` : "BDON Immersive Home");
 }
 
 function createTray() {

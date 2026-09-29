@@ -89,12 +89,12 @@ static void ensureDir(const std::wstring& dir) {
 }
 
 std::wstring appDataDir() {
-    std::wstring d = knownFolder(FOLDERID_RoamingAppData) + L"\\OurNotesWallpaper";
+    std::wstring d = knownFolder(FOLDERID_RoamingAppData) + L"\\BDONImmersiveHome";
     ensureDir(d);
     return d;
 }
 std::wstring localAppDataDir() {
-    std::wstring d = knownFolder(FOLDERID_LocalAppData) + L"\\OurNotesWallpaper";
+    std::wstring d = knownFolder(FOLDERID_LocalAppData) + L"\\BDONImmersiveHome";
     ensureDir(d);
     return d;
 }
@@ -178,7 +178,7 @@ static std::string timestamp() {
 
 void logInit() {
     g_logPath = wideToUtf8(localAppDataDir()) + "\\log.txt";
-    logLine("=== OurNotesWallpaper started ===");
+    logLine("=== BDONImmersiveHome started ===");
 }
 
 void logLine(const std::string& line) {

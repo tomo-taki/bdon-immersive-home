@@ -307,7 +307,7 @@ final class WallpaperController {
     /// `<bundle id>.qa.restartPages` and `<bundle id>.qa.pause` (object "1"/"0").
     private func observeQA() {
         let center = DistributedNotificationCenter.default()
-        let prefix = Bundle.main.bundleIdentifier ?? "ournotes"
+        let prefix = Bundle.main.bundleIdentifier ?? "bdon"
         center.addObserver(forName: .init("\(prefix).qa.restartPages"), object: nil, queue: .main) { [weak self] _ in
             EventLog.write("qa: restart pages")
             self?.views.forEach { $0.restart() }

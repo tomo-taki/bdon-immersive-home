@@ -2,7 +2,7 @@
 """Parse a PE file's import directory and print the imported DLL names.
 
 Pure stdlib (struct only) -- no pefile dependency. Handles PE32 and PE32+.
-Verifies (SPEC "imports must be system DLLs only") that OurNotesWallpaper.exe
+Verifies (SPEC "imports must be system DLLs only") that BDONImmersiveHome.exe
 depends on nothing but Windows-shipped DLLs.
 """
 import struct

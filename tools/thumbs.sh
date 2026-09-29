@@ -1,12 +1,12 @@
 #!/bin/bash
 # Settings thumbnails (Resources/web/thumbs/<id>.jpg and <id>_bg.jpg without
 # characters), rendered offscreen by the app's own Metal renderer.
-# Usage: tools/thumbs.sh [binary]   (default .build/release/YumemitaWallpaper)
+# Usage: tools/thumbs.sh [binary]   (default .build/release/BDONImmersiveHome)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BIN="${1:-$ROOT/.build/release/YumemitaWallpaper}"
+BIN="${1:-$ROOT/.build/release/BDONImmersiveHome}"
 OUT="$ROOT/Resources/web/thumbs"
-TMP="${TMPDIR:-/tmp}/ournotes-thumbs.$$"
+TMP="${TMPDIR:-/tmp}/bdon-thumbs.$$"
 mkdir -p "$OUT" "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 

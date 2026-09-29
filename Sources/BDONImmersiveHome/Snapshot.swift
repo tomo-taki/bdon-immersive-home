@@ -3,12 +3,12 @@ import Metal
 
 /// QA renders without a window.
 ///   `--snapshot <out.png> [width height] [spotId] [chars 0|1]`: one frame after
-///     the clip has run `YUMEMITA_WARMUP` seconds (default 4.5, stepped at 30 fps).
+///     the clip has run `BDON_WARMUP` seconds (default 4.5, stepped at 30 fps).
 ///   `--bench <spotId> <width> <height> [frames]`: GPU time per frame with a
 ///     moving camera and animating residents.
 enum Snapshot {
     private static var warmUp: Double {
-        Double(ProcessInfo.processInfo.environment["YUMEMITA_WARMUP"] ?? "") ?? 4.5
+        Double(ProcessInfo.processInfo.environment["BDON_WARMUP"] ?? "") ?? 4.5
     }
 
     private static func prepare(_ spot: Spot) throws -> (MTLDevice, SpotRenderer, SpotStage) {

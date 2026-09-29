@@ -1,6 +1,6 @@
 // onp_settings.h -- user settings (WallpaperSettings.swift keys/defaults),
-// persisted to %APPDATA%\OurNotesWallpaper\settings.json, plus the log file at
-// %LOCALAPPDATA%\OurNotesWallpaper\log.txt and shared path helpers.
+// persisted to %APPDATA%\BDONImmersiveHome\settings.json, plus the log file at
+// %LOCALAPPDATA%\BDONImmersiveHome\log.txt and shared path helpers.
 
 #pragma once
 
@@ -36,8 +36,8 @@ struct Settings {
 };
 
 // Paths (created on demand).
-std::wstring appDataDir();       // %APPDATA%\OurNotesWallpaper
-std::wstring localAppDataDir();  // %LOCALAPPDATA%\OurNotesWallpaper
+std::wstring appDataDir();       // %APPDATA%\BDONImmersiveHome
+std::wstring localAppDataDir();  // %LOCALAPPDATA%\BDONImmersiveHome
 std::string settingsJsonPath();  // UTF-8
 
 // Where the bundled data/ lives: next to the exe (package layout) or the repo.

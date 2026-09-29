@@ -15,7 +15,7 @@ if let flag = args.firstIndex(of: "--snapshot"), flag + 1 < args.count {
         exit(1)
     }
     let ok = Snapshot.render(to: out, size: CGSize(width: width, height: height), spot: spot, characters: characters,
-                             hidden: (ProcessInfo.processInfo.environment["YUMEMITA_HIDE"] ?? "").split(separator: ",").map(String.init))
+                             hidden: (ProcessInfo.processInfo.environment["BDON_HIDE"] ?? "").split(separator: ",").map(String.init))
     exit(ok ? 0 : 1)
 }
 
@@ -62,7 +62,7 @@ if let flag = settingsShot ?? aboutShot, flag + 1 < args.count {
 let app = NSApplication.shared
 
 // One instance only: a second copy (login item + manual launch, or the old
-// "Yumemita Wallpaper.app" build sharing this bundle id) would stack a
+// "BDON Immersive Home.app" build sharing this bundle id) would stack a
 // second set of desktop windows and double the memory.
 let myPid = ProcessInfo.processInfo.processIdentifier
 let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
@@ -72,6 +72,8 @@ if !others.isEmpty {
     EventLog.flush()
     exit(0)
 }
+
+LegacyMigration.run()
 
 let delegate = AppDelegate()
 app.delegate = delegate

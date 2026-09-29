@@ -351,7 +351,7 @@ void openSettingsWindow(HINSTANCE hinst) {
         GdiplusStartup(&g_gdiplusToken, &in, nullptr);
     }
     static bool registered = false;
-    const wchar_t* cls = L"OurNotesWallpaperSettings";
+    const wchar_t* cls = L"BDONImmersiveHomeSettings";
     if (!registered) {
         WNDCLASSW wc = {};
         wc.lpfnWndProc = settingsProc;

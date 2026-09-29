@@ -1,4 +1,4 @@
-// onp_d3d.h -- Direct3D 11 port of Sources/YumemitaWallpaper/Render/Renderer.swift.
+// onp_d3d.h -- Direct3D 11 port of Sources/BDONImmersiveHome/Render/Renderer.swift.
 // Same passes and state: sky gradient; opaque room (cutout 0.5, depth write);
 // transparent list sorted (order asc, NDC z far->near, id); residents depth-test
 // no write; 4 spine blend modes; 4x MSAA + resolve; CSS filter pass.

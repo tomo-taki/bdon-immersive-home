@@ -1,4 +1,4 @@
-// onp_shaders.h -- HLSL ports of Sources/YumemitaWallpaper/Render/Shaders.swift,
+// onp_shaders.h -- HLSL ports of Sources/BDONImmersiveHome/Render/Shaders.swift,
 // compiled at runtime with D3DCompile. The colour math matches three.js/the
 // Metal build exactly:
 //   room:  sRGB texel -> raw texel (un-premultiply for cutout)

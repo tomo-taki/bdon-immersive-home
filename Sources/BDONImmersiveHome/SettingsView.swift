@@ -9,8 +9,6 @@ final class SettingsNav: ObservableObject {
         case display = "상세"
         case about = "정보"
 
-        /// Tabs stacked at the top of the sidebar; 정보 sits at the bottom.
-        static let main: [Tab] = [.scene, .display]
     }
 
     /// Middle-column sections of the 상세 tab.
@@ -73,9 +71,8 @@ struct SettingsView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: Self.tabSpacing) {
-            ForEach(SettingsNav.Tab.main, id: \.self) { tab($0) }
+            ForEach(SettingsNav.Tab.allCases, id: \.self) { tab($0) }
             Spacer()
-            tab(.about)
         }
         .padding(.leading, 16)
         .padding(.vertical, Self.columnTop)
@@ -111,14 +108,12 @@ struct SettingsView: View {
                 }
                 .padding(.top, Self.tabHeight + Self.tabSpacing)
             case .about:
-                Spacer()
                 SubTabRow(title: "앱 정보", selected: true) {}
+                    .padding(.top, (Self.tabHeight + Self.tabSpacing) * 2)
             }
             Spacer(minLength: 0)
-                .frame(maxHeight: nav.tab == .about ? 0 : .infinity)
         }
         .padding(.top, Self.columnTop + 1)
-        .padding(.bottom, nav.tab == .about ? Self.columnTop + 1 : 0)
         .frame(width: 196)
         .background(Theme.panel.opacity(0.72))
     }

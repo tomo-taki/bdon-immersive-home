@@ -1,4 +1,4 @@
-// onp_math.h -- faithful C++ port of Sources/YumemitaWallpaper/Render/Math.swift.
+// onp_math.h -- faithful C++ port of Sources/BDONImmersiveHome/Render/Math.swift.
 //
 // The Swift original uses Apple's simd: column-major storage, COLUMN vectors
 // (m * v), right-handed look-at, Metal's [0,1] depth range. We reproduce those

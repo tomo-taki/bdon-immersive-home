@@ -22,7 +22,7 @@ from pathlib import Path
 
 BASE = "https://storage.bdon.moe/moenotes/"
 PREFIX = "host/"
-UA = {"User-Agent": "Mozilla/5.0 (Macintosh) yumemita-wallpaper"}  # CDN rejects urllib's default UA
+UA = {"User-Agent": "Mozilla/5.0 (Macintosh) bdon-immersive-home"}  # CDN rejects urllib's default UA
 
 
 def get(url: str) -> bytes:

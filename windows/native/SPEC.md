@@ -5,12 +5,12 @@ C++ / Direct3D 11 port of the macOS Swift + Metal app. Cross-compiled on the Mac
 d3d11, dxgi, d3dcompiler_47, gdiplus, shell32, user32, wtsapi32 fine). No wine here: the user tests in a
 Windows 11 ARM64 VM (UTM, no GPU) -> try D3D_DRIVER_TYPE_HARDWARE, then WARP.
 
-Ownership: only `windows/native/**` and `dist/windows/OurNotesWallpaper-Native-win-{x64,arm64}.zip`.
+Ownership: only `windows/native/**` and `dist/windows/BDONImmersiveHome-Native-win-{x64,arm64}.zip`.
 Everything else in the repo is read-only (the web track is built in parallel in `windows/web`).
 
 ## Read first
-- Renderer: `Sources/YumemitaWallpaper/Render/{Math,Spot,Room,Shaders,Stage,Renderer}.swift`
-- View / controller: `Sources/YumemitaWallpaper/{SpotMetalView,WallpaperController,WallpaperSettings,EasterEgg,SpotCatalog,SettingsView}.swift`
+- Renderer: `Sources/BDONImmersiveHome/Render/{Math,Spot,Room,Shaders,Stage,Renderer}.swift`
+- View / controller: `Sources/BDONImmersiveHome/{SpotMetalView,WallpaperController,WallpaperSettings,EasterEgg,SpotCatalog,SettingsView}.swift`
 - Spine glue, reuse as is: `Sources/SpineBridge/spine_bridge.c` + `include/spine_bridge.h` over
   `vendor/spine-runtimes/spine-c/spine-c` (src + include, `-w`). The host sets `sb_texture_load` /
   `sb_texture_release` (PNG -> premultiplied RGBA8 SRV via stb_image; room texture gets mips, atlas pages none).
@@ -46,14 +46,14 @@ Everything else in the repo is read-only (the web track is built in parallel in 
    dimmed). Fixed footer: 캐릭터 표시 / 커서 따라 시점 이동 / 장면 셔플 toggles, 변경 주기 dropdown
    (1분마다 5분마다 10분마다 30분마다 1시간마다, disabled unless shuffle), "현재: <name>" on the right.
    Easter egg: layout-independent VK_A..VK_Z typed in the window, codes from EasterEgg.swift, toggles,
-   shows "🐧 토모타키 모드" / "아논소요 모드". Settings JSON in %APPDATA%\OurNotesWallpaper\settings.json with
+   shows "🐧 토모타키 모드" / "아논소요 모드". Settings JSON in %APPDATA%\BDONImmersiveHome\settings.json with
    WallpaperSettings.swift keys/defaults (spotId 30001, showCharacters, cursorParallax, shuffle,
    shufflePool, shuffleInterval minutes10, easterEgg none).
-7. Log %LOCALAPPDATA%\OurNotesWallpaper\log.txt: spot loads, errors, HARDWARE/WARP, memory every 5 min.
-8. `OurNotesWallpaper.exe --snapshot out.png W H spotId 0|1` offscreen QA render.
+7. Log %LOCALAPPDATA%\BDONImmersiveHome\log.txt: spot loads, errors, HARDWARE/WARP, memory every 5 min.
+8. `BDONImmersiveHome.exe --snapshot out.png W H spotId 0|1` offscreen QA render.
 
 ## Build / package
-`windows/native/build.sh` -> `windows/native/out/{x64,arm64}/OurNotesWallpaper.exe` (GUI subsystem
+`windows/native/build.sh` -> `windows/native/out/{x64,arm64}/BDONImmersiveHome.exe` (GUI subsystem
 `-Wl,--subsystem,windows`, static C++ runtime; imports must be system DLLs only, check the PE import table
 with a short python script). Icon: `.ico` from tomori.png via PIL, embedded with `zig rc` if it works,
 otherwise loaded at runtime. Zips: exe + `data/` (spots, thumbs, bands) + `README-ko.txt` (how to run,

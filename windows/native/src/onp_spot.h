@@ -1,4 +1,4 @@
-// onp_spot.h -- C++ port of Sources/YumemitaWallpaper/Render/Spot.swift and the
+// onp_spot.h -- C++ port of Sources/BDONImmersiveHome/Render/Spot.swift and the
 // slice of SpotCatalog needed at runtime. Parses spot.json + spots/index.json
 // via nlohmann/json and reproduces the Spot camera math exactly.
 

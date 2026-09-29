@@ -1,4 +1,4 @@
-// main.cpp -- OurNotesWallpaper native Windows entry point. Ports
+// main.cpp -- BDONImmersiveHome native Windows entry point. Ports
 // WallpaperController.swift / main.swift / AppDelegate.swift behaviour:
 //   - one wallpaper window per monitor behind the desktop icons (WorkerW)
 //   - tray icon + right-click menu (settings / characters / shuffle / quit)
@@ -36,7 +36,7 @@ using namespace onp;
 
 // ---- globals ----
 
-static const wchar_t* kWindowClass = L"OurNotesWallpaperWnd";
+static const wchar_t* kWindowClass = L"BDONImmersiveHomeWnd";
 static const UINT WM_APP_TRAY = WM_APP + 1;
 static const UINT kTrayId = 1;
 // Tray menu command ids.
@@ -303,7 +303,7 @@ static void addTray(HWND hwnd, HINSTANCE hinst) {
     g_tray.uCallbackMessage = WM_APP_TRAY;
     g_tray.hIcon = (HICON)LoadImageW(hinst, MAKEINTRESOURCEW(1), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE);
     if (!g_tray.hIcon) g_tray.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
-    wcscpy_s(g_tray.szTip, L"Our Notes Wallpaper");
+    wcscpy_s(g_tray.szTip, L"BDON Immersive Home");
     Shell_NotifyIconW(NIM_ADD, &g_tray);
 }
 
@@ -444,7 +444,7 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
     }
 
     // Single instance.
-    HANDLE mutex = CreateMutexW(nullptr, TRUE, L"OurNotesWallpaper.SingleInstance");
+    HANDLE mutex = CreateMutexW(nullptr, TRUE, L"BDONImmersiveHome.SingleInstance");
     if (mutex && GetLastError() == ERROR_ALREADY_EXISTS) {
         logLine("another instance is running; exiting");
         return 0;
@@ -470,7 +470,7 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
     // HWND_MESSAGE windows never get broadcasts such as WM_DISPLAYCHANGE or
     // "TaskbarCreated", which is why a resolution change left the wallpaper
     // at its old size. It is never shown.
-    HWND main = CreateWindowExW(WS_EX_TOOLWINDOW, kWindowClass, L"OurNotesWallpaperMain", WS_POPUP, 0, 0, 0, 0,
+    HWND main = CreateWindowExW(WS_EX_TOOLWINDOW, kWindowClass, L"BDONImmersiveHomeMain", WS_POPUP, 0, 0, 0, 0,
                                 nullptr, nullptr, hinst, nullptr);
     SetWindowLongPtrW(main, GWLP_HINSTANCE, (LONG_PTR)hinst);
 

@@ -8,11 +8,11 @@ struct AboutPane: View {
     private static let mailBundleId = "com.apple.mail"
     private static let subject = "[BDON Immersive Home] 버그 리포트 / 제안"
 
-    /// "2026.09.29 (42)": build date, then the commit count as build number.
+    /// "2026.09.29 (fa494c3)": build date, then the commit it was built from.
     static var version: String {
         let info = Bundle.main.infoDictionary
         let date = info?["CFBundleShortVersionString"] as? String ?? "개발 빌드"
-        let build = info?["CFBundleVersion"] as? String
+        let build = info?["BDONCommit"] as? String
         return build.map { "\(date) (\($0))" } ?? date
     }
 

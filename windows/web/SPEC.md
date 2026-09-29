@@ -6,7 +6,7 @@ Mac for Windows x64 and arm64 (the user tests in a Windows 11 ARM64 VM under UTM
 on Chromium's software path — keep `app.disableHardwareAcceleration()` OFF but make sure SwiftShader/WARP
 fallback is allowed, e.g. `--enable-unsafe-swiftshader` switch).
 
-Ownership: only `windows/web/**` and `dist/windows/OurNotesWallpaper-Web-win32-{x64,arm64}.zip`.
+Ownership: only `windows/web/**` and `dist/windows/BDONImmersiveHome-Web-win32-{x64,arm64}.zip`.
 Read-only: everything else (the native track is built in parallel in `windows/native`). If the page code
 needs a change, copy `Resources/web/index.html` into the Electron app and adapt the copy; do not edit
 `web/src` (the macOS WebKit build uses it). `web/src/main.ts` page API: `window.wallpaper.setPointer(x,y)`,
@@ -14,7 +14,7 @@ needs a change, copy `Resources/web/index.html` into the Electron app and adapt 
 `situation`, `chars`, `hide`, `fps`, `driver` (omit `driver=native` so the page drives itself with rAF;
 set `backgroundThrottling: false`). Read `web/src/main.ts` to confirm.
 
-## Behaviour (mirror the macOS app: `Sources/YumemitaWallpaper/{WallpaperController,WallpaperSettings,
+## Behaviour (mirror the macOS app: `Sources/BDONImmersiveHome/{WallpaperController,WallpaperSettings,
 EasterEgg,SettingsView,SpotCatalog}.swift` and legacy `legacy/webkit/SpotWebView.swift`)
 1. One frameless, non-focusable, skipTaskbar BrowserWindow per display, placed BEHIND the desktop icons
    with the WorkerW technique via `koffi` FFI (user32: FindWindowW, SendMessageTimeoutW(Progman, 0x052C,
@@ -45,8 +45,8 @@ EasterEgg,SettingsView,SpotCatalog}.swift` and legacy `legacy/webkit/SpotWebView
 `windows/web/build.sh`: `npm install` pinned exact versions (electron, @electron/packager, koffi), rebuild
 the web bundle (`cd web && npm run build`), copy page + `Resources/web/{spots,thumbs,bands}` into the app,
 package with @electron/packager for `win32` x64 and arm64 (no rcedit/wine: skip exe icon metadata if it
-needs wine), zip to `dist/windows/OurNotesWallpaper-Web-win32-{x64,arm64}.zip` with a `README-ko.txt`
-(run OurNotesWallpaper.exe, SmartScreen: 추가 정보 -> 실행, where settings/logs live). Check koffi's
+needs wine), zip to `dist/windows/BDONImmersiveHome-Web-win32-{x64,arm64}.zip` with a `README-ko.txt`
+(run BDONImmersiveHome.exe, SmartScreen: 추가 정보 -> 실행, where settings/logs live). Check koffi's
 prebuilt win32_x64 and win32_arm64 binaries are inside the package.
 
 ## Verify here

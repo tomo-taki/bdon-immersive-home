@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# windows/native/build.sh -- cross-compile OurNotesWallpaper.exe for
+# windows/native/build.sh -- cross-compile BDONImmersiveHome.exe for
 # x86_64-windows-gnu and aarch64-windows-gnu with zig, on macOS. No wine.
 #
-# Output: windows/native/out/{x64,arm64}/OurNotesWallpaper.exe
+# Output: windows/native/out/{x64,arm64}/BDONImmersiveHome.exe
 # Usage:  windows/native/build.sh [x64|arm64|both]   (default both)
 
 set -euo pipefail
@@ -74,8 +74,8 @@ build_target() {
 
   # Link (icon .res included when it built).
   "$ZIG" c++ -target "$triple" "${LDFLAGS[@]}" "${objs[@]}" $RES "${LIBS[@]}" \
-      -o "$outdir/OurNotesWallpaper.exe"
-  echo "built $outdir/OurNotesWallpaper.exe ($(wc -c < "$outdir/OurNotesWallpaper.exe") bytes)"
+      -o "$outdir/BDONImmersiveHome.exe"
+  echo "built $outdir/BDONImmersiveHome.exe ($(wc -c < "$outdir/BDONImmersiveHome.exe") bytes)"
 }
 
 if [ "$WHICH" = "x64" ] || [ "$WHICH" = "both" ]; then

@@ -171,7 +171,8 @@ struct SubTabRow: View {
 struct OptionPill<Detail: View>: View {
     private static var headerHeight: CGFloat { 64 }
     private static var radius: CGFloat { headerHeight / 2 }
-    private static var panelGap: CGFloat { 3 }
+    /// How far the opened panel reaches out around the header capsule.
+    private static var panelLip: CGFloat { 7 }
 
     let title: String
     let value: String
@@ -197,17 +198,17 @@ struct OptionPill<Detail: View>: View {
 
     private var capsule: RoundedRectangle { RoundedRectangle(cornerRadius: Self.radius, style: .circular) }
 
-    /// Header capsule keeps its own fill and border whether open or not.
-    /// Opening drops a separately coloured panel that starts behind the
-    /// capsule's middle but has the capsule's lower contour (plus a hairline
-    /// gap) cut out, so the two never overlap.
+    /// Header capsule keeps its own fill whether open or not. Opening lays a
+    /// separately coloured panel under it that wraps up around the capsule;
+    /// the capsule is cut out of the panel so the two never mix, and the
+    /// capsule border is dropped so no line separates them.
     var body: some View {
         VStack(spacing: 0) {
             Button(action: action) {
                 header
                     .frame(height: Self.headerHeight)
                     .background(capsule.fill(Theme.pill.opacity(0.55)))
-                    .overlay(capsule.stroke(Theme.pillEdge.opacity(0.8), lineWidth: 1))
+                    .overlay(capsule.stroke(Theme.pillEdge.opacity(expanded ? 0 : 0.8), lineWidth: 1))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(title), \(value)")
@@ -222,7 +223,7 @@ struct OptionPill<Detail: View>: View {
         }
         .background {
             if expanded {
-                DropPanel(headerHeight: Self.headerHeight, radius: Self.radius, gap: Self.panelGap)
+                DropPanel(headerHeight: Self.headerHeight, radius: Self.radius, lip: Self.panelLip)
                     .fill(Theme.pillOpen)
             }
         }
@@ -255,27 +256,28 @@ struct OptionPill<Detail: View>: View {
     }
 }
 
-/// Opened-pill panel: a rounded rectangle from the header's vertical middle
-/// to the bottom, minus the header capsule grown by `gap`, so its top edge
-/// follows the capsule's lower contour.
+/// Opened-pill panel: a rounded rectangle grown by `lip` on the top and
+/// sides, so it wraps up around the header capsule, minus the capsule itself
+/// (shrunk half a point so the antialiased edges overlap instead of leaving
+/// a seam).
 ///
-///   ╭──────── header capsule ────────╮
-///   ╰────────────────────────────────╯   <- gap
-///  ▕ ╲____________________________╱ ▏    <- panel top = capsule contour
-///  ▕        OFF        ON           ▏
-///   ╰───────────────────────────────╯
+///  ╭────────────────────────────────────╮
+///  │ ╭──────── header capsule ────────╮ │
+///  │ ╰────────────────────────────────╯ │
+///  │        OFF        ON               │
+///  ╰────────────────────────────────────╯
 private struct DropPanel: Shape {
     let headerHeight: CGFloat
     let radius: CGFloat
-    let gap: CGFloat
+    let lip: CGFloat
 
     func path(in rect: CGRect) -> Path {
-        let top = headerHeight / 2
-        let body = Path(roundedRect: CGRect(x: rect.minX, y: rect.minY + top, width: rect.width, height: rect.height - top),
-                        cornerRadius: radius, style: .circular)
+        let body = Path(roundedRect: CGRect(x: rect.minX - lip, y: rect.minY - lip,
+                                            width: rect.width + lip * 2, height: rect.height + lip),
+                        cornerRadius: radius + lip, style: .circular)
         let header = Path(roundedRect: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: headerHeight)
-                            .insetBy(dx: -gap, dy: -gap),
-                          cornerRadius: radius + gap, style: .circular)
+                            .insetBy(dx: 0.5, dy: 0.5),
+                          cornerRadius: radius - 0.5, style: .circular)
         return body.subtracting(header)
     }
 }

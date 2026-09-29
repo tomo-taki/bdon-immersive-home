@@ -1,11 +1,11 @@
-Our Notes Wallpaper (네이티브 Windows 버전)
+BDON Immersive Home (네이티브 Windows 버전)
 =========================================
 
 실행 방법
 ---------
 1. 압축을 푼 폴더 전체를 원하는 위치에 둡니다
-   (OurNotesWallpaper.exe 와 data 폴더가 같은 폴더에 있어야 합니다).
-2. OurNotesWallpaper.exe 를 실행합니다.
+   (BDONImmersiveHome.exe 와 data 폴더가 같은 폴더에 있어야 합니다).
+2. BDONImmersiveHome.exe 를 실행합니다.
 3. 바탕화면 아이콘 뒤에 배경이 나타나고, 작업 표시줄 트레이에 아이콘이 생깁니다.
 4. 트레이 아이콘을 왼쪽 클릭하거나 오른쪽 클릭 → "배경 설정…" 으로
    설정 창을 엽니다.
@@ -27,8 +27,8 @@ Our Notes Wallpaper (네이티브 Windows 버전)
 
 파일 위치
 ---------
-- 설정 파일 : %APPDATA%\OurNotesWallpaper\settings.json
-- 로그 파일 : %LOCALAPPDATA%\OurNotesWallpaper\log.txt
+- 설정 파일 : %APPDATA%\BDONImmersiveHome\settings.json
+- 로그 파일 : %LOCALAPPDATA%\BDONImmersiveHome\log.txt
 
 SmartScreen 안내
 ----------------

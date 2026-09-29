@@ -12,7 +12,7 @@ enum MetalContext {
     }()
 
     /// Spots decode (glb, PNG, skeleton JSON) off the main thread, one at a time.
-    static let loadQueue = DispatchQueue(label: "ournotes.spot-load", qos: .userInitiated)
+    static let loadQueue = DispatchQueue(label: "bdon.spot-load", qos: .userInitiated)
 
     static var spotsRoot: URL? { SpotCatalog.webRoot?.appendingPathComponent("spots") }
 }

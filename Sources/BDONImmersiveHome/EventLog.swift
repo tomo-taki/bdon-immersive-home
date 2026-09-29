@@ -1,13 +1,13 @@
 import Foundation
 
-/// Append-only event log at ~/Library/Logs/OurNotesWallpaper.log, so a
+/// Append-only event log at ~/Library/Logs/BDONImmersiveHome.log, so a
 /// problem seen on the desktop (blank window, reload, failed Spot) can be
 /// traced afterwards. Also mirrored to NSLog.
 enum EventLog {
     private static let maxBytes = 1_000_000
     private static let queue = DispatchQueue(label: "EventLog")
     private static let url = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Logs/OurNotesWallpaper.log")
+        .appendingPathComponent("Library/Logs/BDONImmersiveHome.log")
     private static let stamp: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

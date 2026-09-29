@@ -1,4 +1,4 @@
-// onp_stage.h -- C++ port of Sources/YumemitaWallpaper/Render/Stage.swift.
+// onp_stage.h -- C++ port of Sources/BDONImmersiveHome/Render/Stage.swift.
 // One Spot situation: room + residents, the animation clock and replay, the
 // characters-off / easter-egg slot rules (SlotNames), and applyVisibility.
 // Residents wrap SBDrawable from the spine bridge (spine_bridge.h).

@@ -7,11 +7,11 @@ import AppKit
 /// per display and put back when the option is turned off.
 enum LockScreenWallpaper {
     private static let originalsKey = "lockScreenOriginals"
-    private static let queue = DispatchQueue(label: "ournotes.lockscreen", qos: .utility)
+    private static let queue = DispatchQueue(label: "bdon.lockscreen", qos: .utility)
 
     static let directory: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("OurNotesWallpaper/LockScreen", isDirectory: true)
+        return base.appendingPathComponent("BDONImmersiveHome/LockScreen", isDirectory: true)
     }()
 
     private static func displayKey(_ screen: NSScreen) -> String {
@@ -59,6 +59,7 @@ enum LockScreenWallpaper {
         }
         UserDefaults.standard.removeObject(forKey: originalsKey)
         try? FileManager.default.removeItem(at: directory)
+        try? FileManager.default.removeItem(at: LegacyMigration.oldLockScreenDirectory)
         EventLog.write("desktop pictures restored")
     }
 
@@ -66,7 +67,8 @@ enum LockScreenWallpaper {
     private static func rememberOriginal(for screen: NSScreen, key: String) {
         var originals = UserDefaults.standard.dictionary(forKey: originalsKey) as? [String: String] ?? [:]
         guard originals[key] == nil, let current = NSWorkspace.shared.desktopImageURL(for: screen),
-              !current.path.hasPrefix(directory.path) else { return }
+              !current.path.hasPrefix(directory.path),
+              !current.path.hasPrefix(LegacyMigration.oldLockScreenDirectory.path) else { return }
         originals[key] = current.path
         UserDefaults.standard.set(originals, forKey: originalsKey)
     }

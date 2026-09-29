@@ -2,8 +2,8 @@
 # build.sh — Build & package the Windows web track on macOS.
 #
 # Produces:
-#   dist/windows/OurNotesWallpaper-Web-win32-x64.zip
-#   dist/windows/OurNotesWallpaper-Web-win32-arm64.zip
+#   dist/windows/BDONImmersiveHome-Web-win32-x64.zip
+#   dist/windows/BDONImmersiveHome-Web-win32-arm64.zip
 #
 # Steps: pin exact npm versions, fetch the Windows koffi native binaries (npm on
 # macOS only installs the host one), rebuild the shared web bundle, stage the
@@ -98,7 +98,7 @@ PACKAGER="$APP/node_modules/.bin/electron-packager"
 # koffi's .node files are auto-unpacked from the asar by packager.
 for ARCH in x64 arm64; do
   echo "    - win32/$ARCH"
-  "$PACKAGER" "$APP" OurNotesWallpaper \
+  "$PACKAGER" "$APP" BDONImmersiveHome \
     --platform=win32 \
     --arch="$ARCH" \
     --electron-version="$ELECTRON_VERSION" \
@@ -113,7 +113,7 @@ done
 
 echo "==> [5/6] README + zip"
 for ARCH in x64 arm64; do
-  PKGDIR="$OUT/OurNotesWallpaper-win32-$ARCH"
+  PKGDIR="$OUT/BDONImmersiveHome-win32-$ARCH"
   if [ ! -d "$PKGDIR" ]; then
     echo "ERROR: expected package dir missing: $PKGDIR" >&2
     exit 1
@@ -122,15 +122,15 @@ for ARCH in x64 arm64; do
 Our Notes 라이브 배경화면 (Windows)
 
 실행 방법
-  1. 이 폴더의 OurNotesWallpaper.exe 를 실행하세요.
+  1. 이 폴더의 BDONImmersiveHome.exe 를 실행하세요.
   2. Windows SmartScreen 경고가 나오면: "추가 정보" → "실행" 을 누르세요.
      (서명되지 않은 앱이라 처음 한 번만 나옵니다.)
   3. 배경이 바탕화면 아이콘 뒤에 나타납니다. 트레이(작업 표시줄 오른쪽
      아이콘 모음)의 아이콘을 눌러 "배경 설정…" 을 열 수 있습니다.
 
 설정 / 로그 위치
-  %APPDATA%\OurNotesWallpaper\settings.json   (설정)
-  %APPDATA%\OurNotesWallpaper\log.txt         (로그, 메모리 포함)
+  %APPDATA%\BDONImmersiveHome\settings.json   (설정)
+  %APPDATA%\BDONImmersiveHome\log.txt         (로그, 메모리 포함)
 
 종료
   트레이 아이콘 → 종료
@@ -140,9 +140,9 @@ Our Notes 라이브 배경화면 (Windows)
   - 여러 모니터를 지원하며, 모니터를 연결/해제하면 자동으로 따라갑니다.
 EOF
 
-  ZIP="$DIST/OurNotesWallpaper-Web-win32-$ARCH.zip"
+  ZIP="$DIST/BDONImmersiveHome-Web-win32-$ARCH.zip"
   rm -f "$ZIP"
-  ( cd "$OUT" && zip -r -q "$ZIP" "OurNotesWallpaper-win32-$ARCH" )
+  ( cd "$OUT" && zip -r -q "$ZIP" "BDONImmersiveHome-win32-$ARCH" )
   echo "    - $(basename "$ZIP"): $(du -h "$ZIP" | cut -f1)"
 done
 
@@ -150,7 +150,7 @@ echo "==> [6/6] Verify koffi binaries + data inside packages"
 FAIL=0
 ASARBIN="$APP/node_modules/.bin/asar"
 for ARCH in x64 arm64; do
-  PKGDIR="$OUT/OurNotesWallpaper-win32-$ARCH"
+  PKGDIR="$OUT/BDONImmersiveHome-win32-$ARCH"
   ASAR="$PKGDIR/resources/app.asar"
   UNPACKED="$PKGDIR/resources/app.asar.unpacked"
   echo "    [$ARCH]"

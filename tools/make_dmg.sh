@@ -8,7 +8,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/dist/BDON Immersive Home.app"
-BIN="$APP/Contents/MacOS/YumemitaWallpaper"
+BIN="$APP/Contents/MacOS/BDONImmersiveHome"
 DMG="$ROOT/dist/BDONImmersiveHome.dmg"
 WORK="$ROOT/work/dmg-build"
 VENV="$ROOT/work/venv-dmg"
