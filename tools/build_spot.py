@@ -82,7 +82,10 @@ def build(spot_id: str, src: Path, out: Path, stories: dict) -> dict | None:
             "scale": skel["scale"],
             "world": world,
             "animation": anim["_animationName"] or None,
-            "loop": bool(anim["loop"]),
+            # home_start is a one-shot entrance. The only looped one
+            # (50007 Chieri_shadow) fades in from alpha 0, so looping it
+            # blinked the shadow every 1.78 s over the pillar.
+            "loop": bool(anim["loop"]) and anim["_animationName"] != "home_start",
             "order": order.get(char["path"], 0),
         })
 
