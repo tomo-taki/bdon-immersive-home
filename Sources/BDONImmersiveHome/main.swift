@@ -26,16 +26,6 @@ if let flag = args.firstIndex(of: "--bench"), flag + 3 < args.count, let spot = 
     exit(Snapshot.bench(spot: spot, width: width, height: height, frames: frames) ? 0 : 1)
 }
 
-// `--cover-check` prints which displays another app's window fully covers (QA).
-if args.contains("--cover-check") {
-    var count: UInt32 = 0
-    CGGetOnlineDisplayList(16, nil, &count)
-    var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
-    CGGetOnlineDisplayList(count, &ids, &count)
-    print("displays \(ids) covered \(WallpaperController.displaysCoveredByWindows(ids).sorted())")
-    exit(0)
-}
-
 // `--settings-snapshot <out.png>` renders the settings window offscreen and exits (QA).
 // SETTINGS_TAB=배경|상세|정보, SETTINGS_SECTION=표시|셔플 picks the tab, SETTINGS_OPEN=characters|interval|...
 // opens that option pill. `--about-snapshot <out.png>` is the 정보 tab.

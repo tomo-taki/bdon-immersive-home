@@ -36,7 +36,7 @@ INCLUDES=(-I "$BRIDGE/include" -I "$SPINE/include" -I "$HERE/src" -I "$HERE/thir
 
 # System import libraries (all shipped with Windows).
 LIBS=(-ld3d11 -ldxgi -ld3dcompiler_47 -lgdiplus -lgdi32 -lshell32 -lshlwapi
-      -luser32 -lole32 -lwtsapi32 -lpsapi -luuid -ladvapi32 -ldwmapi)
+      -luser32 -lole32 -lwtsapi32 -lpsapi -luuid -ladvapi32)
 
 # Version stamp injected into the 정보 tab (AboutView parity): build date and
 # the commit it was built from. Fall back to "dev" when git is unavailable.

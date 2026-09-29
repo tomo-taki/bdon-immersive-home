@@ -3,7 +3,7 @@
 //   - one wallpaper window per monitor behind the desktop icons (WorkerW)
 //   - tray icon + right-click menu (settings / characters / shuffle / quit)
 //   - frame pacing (30 fps active, 5 fps idle), cursor parallax, shuffle timer
-//   - pause on lock / display-off / fullscreen
+//   - pause on lock / display-off
 //   - --snapshot offscreen QA render
 //   - single instance (named mutex)
 //
@@ -16,7 +16,6 @@
 #include <shellapi.h>
 #include <wtsapi32.h>
 #include <shlobj.h>
-#include <dwmapi.h>
 
 #include <algorithm>
 #include <atomic>
@@ -62,12 +61,10 @@ struct MonitorWindow {
     SwapTarget target;
     RECT rect{};
     float parallaxX = 0, parallaxY = 0;      // smoothed -1..1
-    bool covered = false;                     // a maximised / full-screen window hides it
 };
 
 static std::vector<MonitorWindow> g_windows;
 static bool g_needsFrame = true;             // draw once even if nothing moves
-static bool g_fullscreenApp = false;         // refreshed once a second
 static bool g_reducedRate = false;           // WARP or battery saver: 15 fps
 static NOTIFYICONDATAW g_tray = {};
 static bool g_trayAdded = false;
@@ -333,70 +330,14 @@ static void createMonitorWindows(HINSTANCE hinst) {
 
 // ---- pause conditions (behaviour 4) ----
 
-static bool fullscreenAppActive() {
-    QUERY_USER_NOTIFICATION_STATE state;
-    if (SUCCEEDED(SHQueryUserNotificationState(&state))) {
-        // Busy / running D3D fullscreen / presentation -> pause.
-        if (state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN ||
-            state == QUNS_PRESENTATION_MODE) return true;
-    }
-    return false;
-}
-
-static bool shouldPause() {
-    if (g_sessionLocked.load() || g_fullscreenApp) return true;
-    for (const auto& w : g_windows) if (!w.covered) return false;
-    return !g_windows.empty();   // every monitor hidden behind a window
-}
+// Only a locked session pauses. Stopping behind full-screen or maximised
+// windows was removed: resuming stuttered and residents jumped ahead.
+static bool shouldPause() { return g_sessionLocked.load(); }
 
 static bool reducedRate() { return g_reducedRate; }
 
-// Monitors hidden by the foreground window: maximised over the work area, or
-// covering the whole monitor (borderless full screen, video players). Only
-// the foreground window is considered, which is cheap and never pauses a
-// monitor whose wallpaper actually shows.
-static void updateCoveredMonitors() {
-    HWND fg = GetForegroundWindow();
-    RECT frame{};
-    bool candidate = fg && IsWindowVisible(fg) && !IsIconic(fg);
-    if (candidate) {
-        std::string cls = className(fg);
-        candidate = cls != "Progman" && cls != "WorkerW" && cls != "Shell_TrayWnd" &&
-                    cls != "Shell_SecondaryTrayWnd" && cls != "BDONImmersiveHomeWnd";
-    }
-    if (candidate) {
-        BOOL cloaked = FALSE;   // on another virtual desktop, or a suspended UWP app
-        DwmGetWindowAttribute(fg, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
-        candidate = !cloaked &&
-                    SUCCEEDED(DwmGetWindowAttribute(fg, DWMWA_EXTENDED_FRAME_BOUNDS, &frame, sizeof(frame)));
-    }
-    auto contains = [](const RECT& outer, const RECT& inner) {
-        return outer.left <= inner.left && outer.top <= inner.top &&
-               outer.right >= inner.right && outer.bottom >= inner.bottom;
-    };
-    for (auto& w : g_windows) {
-        bool covered = false;
-        if (candidate) {
-            MONITORINFO mi = {sizeof(mi)};
-            HMONITOR mon = MonitorFromRect(&w.rect, MONITOR_DEFAULTTONEAREST);
-            if (GetMonitorInfoW(mon, &mi))
-                covered = contains(frame, mi.rcMonitor) || (IsZoomed(fg) && contains(frame, mi.rcWork));
-        }
-        if (w.covered != covered) {
-            w.covered = covered;
-            if (!covered) g_needsFrame = true;
-            logLine(std::string("monitor ") + std::to_string(w.rect.left) + "," + std::to_string(w.rect.top) +
-                    (covered ? " covered" : " visible"));
-        }
-    }
-}
-
-// Once a second: full-screen state, covered monitors, frame-rate budget.
-static void refreshPowerAndCover() {
-    bool fullscreen = fullscreenAppActive();
-    if (g_fullscreenApp && !fullscreen) g_needsFrame = true;
-    g_fullscreenApp = fullscreen;
-    updateCoveredMonitors();
+// Once a second: frame-rate budget (WARP or battery saver: 15 fps).
+static void refreshPowerState() {
     SYSTEM_POWER_STATUS power{};
     bool saver = GetSystemPowerStatus(&power) && power.SystemStatusFlag == 1;   // battery saver on
     bool reduced = saver || g_ctx.driver != DriverKind::Hardware;
@@ -494,7 +435,7 @@ static void renderFrame(bool cameraMoving) {
     std::lock_guard<std::mutex> lock(g_stageMutex);
     if (!g_stage) return;
     for (auto& w : g_windows) {
-        if (!w.target.swap || w.covered) continue;
+        if (!w.target.swap) continue;
         auto cam = spotCamera(g_stage->data, (float)w.target.width, (float)w.target.height,
                               g_settings.cursorParallax ? w.parallaxX : 0,
                               g_settings.cursorParallax ? w.parallaxY : 0);
@@ -682,7 +623,7 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
                 }
             }
             if (!g_trayAdded) addTray(main, hinst);
-            refreshPowerAndCover();
+            refreshPowerState();
         }
 
         DWORD now = GetTickCount();
