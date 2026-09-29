@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "onp_d3d.h"
+#include "onp_install.h"
 #include "onp_stage.h"
 #include "onp_settings.h"
 #include "onp_spot.h"
@@ -41,8 +42,9 @@ static const UINT WM_APP_TRAY = WM_APP + 1;
 static const UINT kTrayId = 1;
 // Tray menu command ids.
 enum {
-    kCmdSettings = 100, kCmdCharacters, kCmdShuffle, kCmdQuit,
+    kCmdSettings = 100, kCmdCharacters, kCmdShuffle, kCmdQuit, kCmdAutostart,
 };
+static_assert(kCmdQuit == onp::kQuitCommand, "installer posts this id to quit a running copy");
 
 D3DContext g_ctx;                       // shared device (also used by settings window)
 Settings g_settings;
@@ -63,6 +65,7 @@ struct MonitorWindow {
 
 static std::vector<MonitorWindow> g_windows;
 static NOTIFYICONDATAW g_tray = {};
+static bool g_trayAdded = false;
 static UINT g_taskbarCreated = 0;
 
 // Spot loading (background thread; swap on UI thread).
@@ -159,35 +162,104 @@ static void swapInLoadedSpot() {
     }
 }
 
-// ---- WorkerW attachment (behaviour 1) ----
+// ---- desktop attachment (behaviour 1) ----
+//
+// Classic (Win10 .. Win11 23H2), after Progman is sent 0x052C:
+//   WorkerW (top) -- SHELLDLL_DefView -- icons
+//   WorkerW (top)                          <- we become its child
+//   Progman
+// Raised desktop (Win11 24H2+): everything lives inside Progman:
+//   Progman -- SHELLDLL_DefView (icons, right-click menu)
+//           -- [our windows]               <- placed right below DefView
+//           -- WorkerW (static wallpaper)
+// Progman is composited there, so our child must be WS_EX_LAYERED to be
+// drawn at all (the swap chain then falls back to the blt model). Whatever
+// the layout, DefView must stay ABOVE us: it paints the icons and opens the
+// desktop context menu, so a window over it swallows every click.
 
-static HWND g_workerW = nullptr;
+struct DesktopHost {
+    HWND parent = nullptr;     // what our windows are children of
+    HWND defView = nullptr;    // icon layer inside Progman (raised layout)
+    HWND wallpaper = nullptr;  // Progman's own WorkerW (raised layout)
+    bool raised = false;
+};
 
-static BOOL CALLBACK findWorkerW(HWND top, LPARAM) {
-    HWND shell = FindWindowExW(top, nullptr, L"SHELLDLL_DefView", nullptr);
-    if (shell) {
-        // The WorkerW that hosts the wallpaper is the sibling AFTER this top window.
-        HWND worker = FindWindowExW(nullptr, top, L"WorkerW", nullptr);
-        if (worker) g_workerW = worker;
-    }
+static DesktopHost g_host;
+
+static std::string className(HWND hwnd) {
+    wchar_t cls[64] = {};
+    GetClassNameW(hwnd, cls, 64);
+    std::string out;
+    for (wchar_t* c = cls; *c; ++c) out += (char)(*c < 128 ? *c : '?');
+    return out;
+}
+
+static BOOL CALLBACK findClassicWorkerW(HWND top, LPARAM lparam) {
+    auto* host = reinterpret_cast<DesktopHost*>(lparam);
+    if (className(top) != "WorkerW") return TRUE;
+    if (!FindWindowExW(top, nullptr, L"SHELLDLL_DefView", nullptr)) return TRUE;
+    // The WorkerW that hosts the wallpaper is the sibling AFTER the icon WorkerW.
+    HWND worker = FindWindowExW(nullptr, top, L"WorkerW", nullptr);
+    if (worker) { host->parent = worker; return FALSE; }
     return TRUE;
 }
 
-static HWND resolveWorkerW() {
+static DesktopHost resolveDesktopHost() {
+    DesktopHost host;
     HWND progman = FindWindowW(L"Progman", nullptr);
-    if (progman) {
-        // Ask Progman to spawn the WorkerW behind the icons.
-        DWORD_PTR res = 0;
-        SendMessageTimeoutW(progman, 0x052C, 0xD, 0x1, SMTO_NORMAL, 1000, &res);
-        SendMessageTimeoutW(progman, 0x052C, 0, 0, SMTO_NORMAL, 1000, &res);
+    if (!progman) return host;
+    DWORD_PTR res = 0;
+    SendMessageTimeoutW(progman, 0x052C, 0xD, 0x1, SMTO_NORMAL, 1000, &res);
+    SendMessageTimeoutW(progman, 0x052C, 0, 0, SMTO_NORMAL, 1000, &res);
+
+    std::string tree = "Progman children:";
+    for (HWND c = GetWindow(progman, GW_CHILD); c; c = GetWindow(c, GW_HWNDNEXT)) tree += " " + className(c);
+    logLine(tree);
+
+    HWND defView = FindWindowExW(progman, nullptr, L"SHELLDLL_DefView", nullptr);
+    if (defView) {
+        // Raised desktop, or a classic desktop whose WorkerW did not spawn:
+        // either way sit inside Progman, directly below the icon layer.
+        host.parent = progman;
+        host.defView = defView;
+        host.wallpaper = FindWindowExW(progman, nullptr, L"WorkerW", nullptr);
+        host.raised = true;
+        logLine(std::string("desktop: raised (Progman child below DefView)") +
+                (host.wallpaper ? ", WorkerW present" : ", no WorkerW"));
+        return host;
     }
-    g_workerW = nullptr;
-    EnumWindows(findWorkerW, 0);
-    if (g_workerW) return g_workerW;
-    // Win11 24H2+: the WorkerW/DefView can be a child of Progman.
-    if (progman && FindWindowExW(progman, nullptr, L"SHELLDLL_DefView", nullptr))
-        return progman;
-    return progman;   // last resort: parent to Progman directly
+    EnumWindows(findClassicWorkerW, reinterpret_cast<LPARAM>(&host));
+    if (host.parent) {
+        logLine("desktop: classic WorkerW");
+        return host;
+    }
+    // Nothing recognised: bottom of Progman's children, under anything the
+    // shell draws.
+    host.parent = progman;
+    logLine("desktop: fallback to Progman bottom");
+    return host;
+}
+
+// Put a wallpaper window into the desktop host, below the icon layer.
+static void attachToDesktop(HWND hwnd, const RECT& r) {
+    const DesktopHost& host = g_host;
+    if (!host.parent) return;
+    int w = r.right - r.left, h = r.bottom - r.top;
+    if (host.raised) {
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, GetWindowLongPtrW(hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+        SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
+    }
+    SetWindowLongPtrW(hwnd, GWL_STYLE, (GetWindowLongPtrW(hwnd, GWL_STYLE) & ~WS_POPUP) | WS_CHILD);
+    SetParent(hwnd, host.parent);
+    // Child coordinates are in the host's client space, whose origin is the
+    // virtual screen's top-left, not necessarily the primary monitor.
+    POINT origin{r.left, r.top};
+    ScreenToClient(host.parent, &origin);
+    SetWindowPos(hwnd, host.defView ? host.defView : HWND_BOTTOM, origin.x, origin.y, w, h, SWP_NOACTIVATE);
+    if (host.wallpaper) {
+        // Keep Progman's static wallpaper under us.
+        SetWindowPos(host.wallpaper, hwnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
 }
 
 // ---- monitor enumeration ----
@@ -212,7 +284,7 @@ static void destroyWindows() {
 
 static void createMonitorWindows(HINSTANCE hinst) {
     destroyWindows();
-    HWND worker = resolveWorkerW();
+    g_host = resolveDesktopHost();
 
     std::vector<RECT> rects;
     EnumDisplayMonitors(nullptr, nullptr, addMonitor, reinterpret_cast<LPARAM>(&rects));
@@ -222,22 +294,18 @@ static void createMonitorWindows(HINSTANCE hinst) {
         MonitorWindow mw;
         mw.rect = r;
         int w = r.right - r.left, h = r.bottom - r.top;
-        // No focus / taskbar button. Behind the icon layer nothing can click it.
-        // (No WS_EX_LAYERED: DXGI flip-model swap chains refuse layered windows.)
+        // No focus / taskbar button; clicks fall through to the icon layer.
         HWND hwnd = CreateWindowExW(
             WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
             kWindowClass, L"", WS_POPUP,
             r.left, r.top, w, h, nullptr, nullptr, hinst, nullptr);
         if (!hwnd) continue;
-        // Parent into the WorkerW so we sit behind the desktop icons. As a
-        // child its position is in WorkerW client coordinates, whose origin is
-        // the virtual screen's top-left, not necessarily the primary monitor.
-        if (worker) {
-            SetWindowLongPtrW(hwnd, GWL_STYLE, (GetWindowLongPtrW(hwnd, GWL_STYLE) & ~WS_POPUP) | WS_CHILD);
-            SetParent(hwnd, worker);
-            POINT origin{r.left, r.top};
-            ScreenToClient(worker, &origin);
-            SetWindowPos(hwnd, nullptr, origin.x, origin.y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+        attachToDesktop(hwnd, r);
+        // Render at the size the window really got (a host at another DPI
+        // scale can resize its children), so the camera frames what is shown.
+        RECT client{};
+        if (GetClientRect(hwnd, &client) && client.right > 0 && client.bottom > 0) {
+            w = client.right; h = client.bottom;
         }
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
 
@@ -245,9 +313,9 @@ static void createMonitorWindows(HINSTANCE hinst) {
         mw.target.createForWindow(g_ctx, hwnd, w, h);
         {
             RECT wc{};
-            if (worker) GetClientRect(worker, &wc);
+            if (g_host.parent) GetClientRect(g_host.parent, &wc);
             char buf[200];
-            std::snprintf(buf, sizeof(buf), "monitor %ld,%ld %dx%d dpi %u, workerW client %ldx%ld",
+            std::snprintf(buf, sizeof(buf), "monitor %ld,%ld %dx%d dpi %u, host client %ldx%ld",
                           r.left, r.top, w, h, GetDpiForWindow(hwnd), wc.right, wc.bottom);
             logLine(buf);
         }
@@ -304,7 +372,10 @@ static void addTray(HWND hwnd, HINSTANCE hinst) {
     g_tray.hIcon = (HICON)LoadImageW(hinst, MAKEINTRESOURCEW(1), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE);
     if (!g_tray.hIcon) g_tray.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
     wcscpy_s(g_tray.szTip, L"BDON Immersive Home");
-    Shell_NotifyIconW(NIM_ADD, &g_tray);
+    // Fails while the taskbar is still starting (autostart at sign-in):
+    // the one-second housekeeping in the frame loop retries until it sticks.
+    g_trayAdded = Shell_NotifyIconW(NIM_ADD, &g_tray) != FALSE;
+    if (!g_trayAdded) logLine("tray icon not added yet; will retry");
 }
 
 static void showTrayMenu(HWND hwnd) {
@@ -315,6 +386,8 @@ static void showTrayMenu(HWND hwnd) {
     ModifyMenuW(menu, kCmdSettings, MF_BYCOMMAND | MF_STRING, kCmdSettings, L"\uBC30\uACBD \uC124\uC815\u2026"); // 배경 설정…
     AppendMenuW(menu, MF_STRING | (g_settings.showCharacters ? MF_CHECKED : 0), kCmdCharacters, L"\uCE90\uB9AD\uD130 \uD45C\uC2DC"); // 캐릭터 표시
     AppendMenuW(menu, MF_STRING | (g_settings.shuffle ? MF_CHECKED : 0), kCmdShuffle, L"\uC7A5\uBA74 \uC154\uD50C"); // 장면 셔플
+    AppendMenuW(menu, MF_STRING | (onp::autostartEnabled() ? MF_CHECKED : 0), kCmdAutostart,
+                L"Windows \uC2DC\uC791 \uC2DC \uC790\uB3D9 \uC2E4\uD589"); // Windows 시작 시 자동 실행
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, kCmdQuit, L"\uC885\uB8CC"); // 종료
     SetForegroundWindow(hwnd);
@@ -382,6 +455,7 @@ static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
                 case kCmdCharacters: g_settings.showCharacters = !g_settings.showCharacters; onSettingsChanged(); break;
                 case kCmdShuffle: g_settings.shuffle = !g_settings.shuffle; g_settings.save(); break;
                 case kCmdQuit: PostQuitMessage(0); break;
+                case kCmdAutostart: onp::setAutostart(!onp::autostartEnabled()); break;
             }
             return 0;
         case WM_WTSSESSION_CHANGE:
@@ -442,6 +516,14 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
         g_ctx.shutdown();
         return rc;
     }
+
+    // Per-user install: `--uninstall` from Settings > Apps, and an install
+    // offer when run from anywhere but the install folder (e.g. the zip).
+    if (argc >= 1 && wcscmp(argv[0], L"--uninstall") == 0) {
+        onp::uninstall();
+        return 0;
+    }
+    if (!(argc >= 1 && wcscmp(argv[0], L"--portable") == 0) && onp::offerInstall()) return 0;
 
     // Single instance.
     HANDLE mutex = CreateMutexW(nullptr, TRUE, L"BDONImmersiveHome.SingleInstance");
@@ -508,7 +590,7 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
             lastLayoutCheck = GetTickCount();
             std::vector<RECT> rects;
             EnumDisplayMonitors(nullptr, nullptr, addMonitor, reinterpret_cast<LPARAM>(&rects));
-            bool changed = rects.size() != g_windows.size() || (g_workerW && !IsWindow(g_workerW));
+            bool changed = rects.size() != g_windows.size() || (g_host.parent && !IsWindow(g_host.parent));
             for (size_t i = 0; !changed && i < rects.size(); ++i) {
                 changed = !EqualRect(&rects[i], &g_windows[i].rect);
             }
@@ -516,6 +598,18 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
                 logLine("display layout changed; rebuilding wallpaper windows");
                 createMonitorWindows(hinst);
             }
+            // The host can resize our windows (DPI changes): keep each render
+            // target at the window's real client size.
+            for (auto& w : g_windows) {
+                RECT client{};
+                if (!GetClientRect(w.hwnd, &client) || client.right <= 0 || client.bottom <= 0) continue;
+                if (client.right != w.target.width || client.bottom != w.target.height) {
+                    logLine("window client " + std::to_string(client.right) + "x" + std::to_string(client.bottom) +
+                            " != target " + std::to_string(w.target.width) + "x" + std::to_string(w.target.height) + "; resizing");
+                    w.target.resize(g_ctx, client.right, client.bottom);
+                }
+            }
+            if (!g_trayAdded) addTray(main, hinst);
         }
 
         DWORD now = GetTickCount();

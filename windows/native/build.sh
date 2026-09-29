@@ -27,6 +27,7 @@ CPP_SRC=(
   "$HERE/src/onp_settings.cpp"
   "$HERE/src/onp_png.cpp"
   "$HERE/src/settings_window.cpp"
+  "$HERE/src/onp_install.cpp"
 )
 BRIDGE_SRC="$BRIDGE/spine_bridge.c"
 SPINE_SRC=("$SPINE"/src/spine/*.c)
@@ -35,7 +36,7 @@ INCLUDES=(-I "$BRIDGE/include" -I "$SPINE/include" -I "$HERE/src" -I "$HERE/thir
 
 # System import libraries (all shipped with Windows).
 LIBS=(-ld3d11 -ldxgi -ld3dcompiler_47 -lgdiplus -lgdi32 -lshell32 -lshlwapi
-      -luser32 -lole32 -lwtsapi32 -lpsapi)
+      -luser32 -lole32 -lwtsapi32 -lpsapi -luuid -ladvapi32)
 
 # Version stamp injected into the 정보 tab (AboutView parity): build date and
 # the commit it was built from. Fall back to "dev" when git is unavailable.
