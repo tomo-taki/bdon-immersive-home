@@ -35,7 +35,10 @@ enum Snapshot {
                 t += 1.0 / 30
             }
 
-            let image = renderStill(stage, renderer: renderer, width: Int(size.width), height: Int(size.height))
+            // QA: BDON_POINTER="x,y" (each -1...1) renders with that cursor parallax.
+            let p = (ProcessInfo.processInfo.environment["BDON_POINTER"] ?? "").split(separator: ",").compactMap { Float($0) }
+            let pointer = p.count == 2 ? SIMD2<Float>(p[0], p[1]) : .zero
+            let image = renderStill(stage, renderer: renderer, width: Int(size.width), height: Int(size.height), pointer: pointer)
             guard let image, let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
                 return false
             }
@@ -62,7 +65,7 @@ enum Snapshot {
                 let camera = spotCamera(for: stage, width: Float(width), height: Float(height),
                                         pointer: SIMD2(cos(angle), sin(angle)) * 0.5)
                 let buffer = renderer.queue.makeCommandBuffer()!
-                renderer.draw(stage: stage, view: camera.view, projection: camera.projection, charactersVisible: true,
+                renderer.draw(stage: stage, view: camera.view, projection: camera.projection, sortViewProjection: camera.sort, charactersVisible: true,
                               into: target, commandBuffer: buffer)
                 buffer.commit()
                 buffer.waitUntilCompleted()

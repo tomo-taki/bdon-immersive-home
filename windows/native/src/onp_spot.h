@@ -190,6 +190,7 @@ inline Vec3 rightHanded(const Vec3& v) { return {v.x, v.y, -v.z}; }
 struct CameraMatrices {
     Mat4 view;
     Mat4 projection;
+    Mat4 sortViewProjection;   // same camera without cursor parallax (transparent sort)
     float fov = 0;
 };
 
@@ -199,15 +200,16 @@ inline CameraMatrices spotCamera(const SpotData& data, float width, float height
     float fov = fitFov(s, width, height);
     SpotPose base = defaultPose(s, fov);
     float aspect = width / height;
-    SpotPose pose = shiftedPose(base, px, py, s, aspect);
-
-    Vec3 eye = rightHanded(pose.position);
-    Vec3 dir = rightHanded(lookDirection(pose));
-    Vec3 target = eye + dir;
+    auto viewOf = [](const SpotPose& p) {
+        Vec3 eye = rightHanded(p.position);
+        Vec3 dir = rightHanded(lookDirection(p));
+        return lookAt(eye, eye + dir);
+    };
 
     CameraMatrices out;
-    out.view = lookAt(eye, target);
+    out.view = viewOf(shiftedPose(base, px, py, s, aspect));
     out.projection = perspective(fov, aspect, data.camera.nearZ, data.camera.farZ);
+    out.sortViewProjection = out.projection * viewOf(shiftedPose(base, 0, 0, s, aspect));
     out.fov = fov;
     return out;
 }

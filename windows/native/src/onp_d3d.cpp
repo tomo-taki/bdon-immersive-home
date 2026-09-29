@@ -315,7 +315,7 @@ static void setUniforms(D3DContext& c, const Mat4& viewProjection, const Mat4& m
 }
 
 void drawStage(D3DContext& c, SwapTarget& t, Stage& stage,
-               const Mat4& view, const Mat4& projection, bool charactersVisible) {
+               const Mat4& view, const Mat4& projection, const Mat4& sortViewProjection, bool charactersVisible) {
     ID3D11DeviceContext* dc = c.ctx;
     Mat4 viewProjection = projection * view;
 
@@ -358,10 +358,13 @@ void drawStage(D3DContext& c, SwapTarget& t, Stage& stage,
     }
 
     // 3. Transparent list, painterSortStable: order asc, NDC z far->near, id asc.
+    // Depth is taken under the camera WITHOUT cursor parallax, so turning the
+    // camera never swaps layers at similar depth (the flickering pillar next
+    // to Chieri's shadow in Spot 50007).
     enum class Kind { Card, Resident };
     struct Item { int order; float z; int id; Kind kind; int index; };
     auto depthOf = [&](const Vec3& p) {
-        Vec4 cc = mul(viewProjection, Vec4(p, 1));
+        Vec4 cc = mul(sortViewProjection, Vec4(p, 1));
         return cc.z / cc.w;
     };
     std::vector<Item> items;

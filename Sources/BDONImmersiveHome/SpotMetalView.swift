@@ -18,15 +18,24 @@ enum MetalContext {
 }
 
 /// The Spot camera for a view of this size, `pointer` in -1...1 (cursor parallax).
-func spotCamera(for stage: SpotStage, width: Float, height: Float, pointer: SIMD2<Float>) -> (view: Mat4, projection: Mat4) {
+/// `sort` is the view-projection of the same camera with no parallax: the
+/// renderer orders transparent layers by it, so turning the camera with the
+/// cursor never reorders them.
+func spotCamera(for stage: SpotStage, width: Float, height: Float, pointer: SIMD2<Float>) -> (view: Mat4, projection: Mat4, sort: Mat4) {
     let s = stage.data.situation
     let aspect = width / max(height, 1)
     let base = defaultPose(s, fov: fitFov(s, width: width, height: height))
+    let projection = perspective(fovY: base.fov, aspect: aspect, near: stage.data.camera.near, far: stage.data.camera.far)
+    func view(_ pose: SpotPose) -> Mat4 {
+        let eye = rightHanded(pose.position)
+        let target = rightHanded(pose.position + lookDirection(pose))
+        return lookAt(eye: eye, target: target)
+    }
     let pose = shiftedPose(base, px: pointer.x, py: pointer.y, s, aspect: aspect)
-    let eye = rightHanded(pose.position)
-    let target = rightHanded(pose.position + lookDirection(pose))
-    return (lookAt(eye: eye, target: target),
-            perspective(fovY: pose.fov, aspect: aspect, near: stage.data.camera.near, far: stage.data.camera.far))
+    let still = shiftedPose(base, px: 0, py: 0, s, aspect: aspect)
+    return (view(pose),
+            perspective(fovY: pose.fov, aspect: aspect, near: stage.data.camera.near, far: stage.data.camera.far),
+            projection * view(still))
 }
 
 /// Render one frame of `stage` offscreen and read it back as an sRGB image.
@@ -38,7 +47,7 @@ func renderStill(_ stage: SpotStage, renderer: SpotRenderer, width: Int, height:
     guard width > 0, height > 0, let target = renderer.device.makeTexture(descriptor: d),
           let buffer = renderer.queue.makeCommandBuffer() else { return nil }
     let camera = spotCamera(for: stage, width: Float(width), height: Float(height), pointer: pointer)
-    renderer.draw(stage: stage, view: camera.view, projection: camera.projection, charactersVisible: true,
+    renderer.draw(stage: stage, view: camera.view, projection: camera.projection, sortViewProjection: camera.sort, charactersVisible: true,
                   into: target, commandBuffer: buffer)
     guard let blit = buffer.makeBlitCommandEncoder() else { return nil }
     blit.synchronize(resource: target)
@@ -267,7 +276,7 @@ final class SpotMetalView: MTKView, MTKViewDelegate {
         needsFrame = false
         let size = drawableSize
         let camera = spotCamera(for: stage, width: Float(size.width), height: Float(size.height), pointer: smooth)
-        renderer.draw(stage: stage, view: camera.view, projection: camera.projection, charactersVisible: true,
+        renderer.draw(stage: stage, view: camera.view, projection: camera.projection, sortViewProjection: camera.sort, charactersVisible: true,
                       into: drawable.texture, commandBuffer: buffer)
         buffer.present(drawable)
         buffer.commit()

@@ -427,7 +427,7 @@ static void renderFrame(bool cameraMoving) {
         auto cam = spotCamera(g_stage->data, (float)w.target.width, (float)w.target.height,
                               g_settings.cursorParallax ? w.parallaxX : 0,
                               g_settings.cursorParallax ? w.parallaxY : 0);
-        drawStage(g_ctx, w.target, *g_stage, cam.view, cam.projection, g_settings.showCharacters);
+        drawStage(g_ctx, w.target, *g_stage, cam.view, cam.projection, cam.sortViewProjection, g_settings.showCharacters);
         w.target.swap->Present(1, 0);
     }
 }
@@ -686,7 +686,7 @@ static int runSnapshot(const std::string& outPath, int w, int h, const std::stri
     SwapTarget target;
     if (!target.createOffscreen(g_ctx, w, h)) { logLine("snapshot: offscreen alloc failed"); return 5; }
     auto cam = spotCamera(stage->data, (float)w, (float)h, 0, 0);
-    drawStage(g_ctx, target, *stage, cam.view, cam.projection, chars);
+    drawStage(g_ctx, target, *stage, cam.view, cam.projection, cam.sortViewProjection, chars);
 
     // Read back the offscreen texture via a staging copy.
     D3D11_TEXTURE2D_DESC td = {};

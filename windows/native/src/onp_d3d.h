@@ -94,8 +94,9 @@ public:
 };
 
 // Draw the stage seen through view/projection into `target`. Reproduces the
-// Renderer.swift pass order and the painterSortStable transparent sort.
+// Renderer.swift pass order and the painterSortStable transparent sort, whose
+// depths come from `sortViewProjection` (the camera without cursor parallax).
 void drawStage(D3DContext& c, SwapTarget& target, Stage& stage,
-               const Mat4& view, const Mat4& projection, bool charactersVisible);
+               const Mat4& view, const Mat4& projection, const Mat4& sortViewProjection, bool charactersVisible);
 
 } // namespace onp

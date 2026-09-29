@@ -187,10 +187,13 @@ final class SpotRenderer {
     }
 
     /// Draw `stage` seen through `camera` into `target` (a drawable or an offscreen texture).
-    func draw(stage: SpotStage, view: Mat4, projection: Mat4, charactersVisible: Bool,
+    /// `sortViewProjection` orders the transparent layers (the camera without
+    /// cursor parallax; defaults to the drawn camera).
+    func draw(stage: SpotStage, view: Mat4, projection: Mat4, sortViewProjection: Mat4? = nil, charactersVisible: Bool,
               into target: MTLTexture, commandBuffer: MTLCommandBuffer) {
         _ = ensureTargets(outputWidth: target.width, outputHeight: target.height)
         let viewProjection = projection * view
+        let sortViewProjection = sortViewProjection ?? viewProjection
 
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = colorMSAA
@@ -232,8 +235,15 @@ final class SpotRenderer {
 
         // 3. Transparent list.
         enum Item { case card(RoomMesh), resident(Resident) }
+        // Far -> near by projected depth under the camera WITHOUT cursor
+        // parallax. Depth under the turned camera changes with the turn:
+        // cards and residents at similar depth (Chieri's shadow and the
+        // pillar card beside it in Spot 50007) swapped order as the cursor
+        // moved and the pillar flickered. (Distance from the eye would also
+        // be turn-invariant, but it puts large cards such as the rooftop
+        // fence in front of the residents.)
         func depth(_ p: SIMD3<Float>) -> Float {
-            let c = viewProjection * SIMD4(p, 1)
+            let c = sortViewProjection * SIMD4(p, 1)
             return c.z / c.w
         }
         var items: [(order: Int, z: Float, id: Int, item: Item)] = []
@@ -249,6 +259,15 @@ final class SpotRenderer {
             if a.order != b.order { return a.order < b.order }
             if a.z != b.z { return a.z > b.z }
             return a.id < b.id
+        }
+        if let dump = ProcessInfo.processInfo.environment["BDON_SORTDUMP"], !dump.isEmpty {
+            let names = items.map { entry -> String in
+                switch entry.item {
+                case .card(let mesh): return "card\(stage.room.meshes.firstIndex { $0.firstIndex == mesh.firstIndex } ?? -1)"
+                case .resident(let r): return r.character.name
+                }
+            }
+            FileHandle.standardError.write(Data((names.joined(separator: " ") + "\n").utf8))
         }
 
         var bufferIndex = 0
