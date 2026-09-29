@@ -301,19 +301,12 @@ struct RadioChoice: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                ZStack {
-                    Circle().fill(selected ? Theme.tealBottom : Theme.panel)
-                    Circle().strokeBorder(selected ? Color.white : Theme.pillEdge, lineWidth: 2.5)
-                    if selected {
-                        Circle().strokeBorder(Color.white, lineWidth: 2.5).frame(width: 13, height: 13)
-                    }
-                }
-                .frame(width: 30, height: 30)
+                GameRadio(selected: selected).frame(width: 33, height: 33)
                 Text(title).font(Theme.font(14))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(.white)
-            .padding(.leading, 6)
+            .padding(.leading, 4)
             .frame(width: Self.width, height: 42)
             .background(Capsule(style: .circular).fill(selected
                 ? AnyShapeStyle(LinearGradient(colors: [Theme.teal, Theme.tealBottom.opacity(0.85)], startPoint: .top, endPoint: .bottom))
@@ -473,5 +466,58 @@ struct MenuPanel<Content: View>: View {
         }
         .background(Theme.panel.opacity(0.9))
         .overlay(Rectangle().stroke(Theme.pillEdge.opacity(0.5), lineWidth: 1))
+    }
+}
+
+/// The game's option radio, rebuilt from its screenshot as concentric discs
+/// (sizes are fractions of the diameter, colours sampled from the capture).
+///
+/// Selected: dark outline, pale cyan rim lit from the top, cyan ring that
+/// brightens outward, a deep teal band, and a soft white centre dot.
+/// Unselected: dark outline, thin lavender rim, indigo ring lit from the
+/// bottom (reads as a recess), and a dark navy well.
+struct GameRadio: View {
+    let selected: Bool
+
+    private static func rgb(_ r: Double, _ g: Double, _ b: Double) -> Color {
+        Color(red: r / 255, green: g / 255, blue: b / 255)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let d = min(geo.size.width, geo.size.height)
+            ZStack {
+                Circle().fill(Color.black.opacity(0.35)).offset(y: d * 0.03)
+                if selected { on(d) } else { off(d) }
+            }
+            .frame(width: d, height: d)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func disc<S: ShapeStyle>(_ d: CGFloat, _ fraction: CGFloat, _ style: S) -> some View {
+        Circle().fill(style).frame(width: d * fraction, height: d * fraction)
+    }
+
+    @ViewBuilder private func on(_ d: CGFloat) -> some View {
+        let rgb = Self.rgb
+        disc(d, 1.0, rgb(48, 72, 92))
+        disc(d, 0.92, LinearGradient(colors: [rgb(200, 236, 248), rgb(158, 190, 206)], startPoint: .top, endPoint: .bottom))
+        disc(d, 0.84, RadialGradient(colors: [rgb(86, 160, 184), rgb(104, 190, 216), rgb(150, 216, 236)],
+                                     center: .center, startRadius: d * 0.29, endRadius: d * 0.42))
+        disc(d, 0.84, LinearGradient(colors: [Color.white.opacity(0.18), Color.clear], startPoint: .top, endPoint: .center))
+        disc(d, 0.60, RadialGradient(colors: [rgb(92, 150, 173), rgb(64, 110, 134)],
+                                     center: .center, startRadius: d * 0.17, endRadius: d * 0.30))
+        disc(d, 0.40, Color.white.opacity(0.35))
+        disc(d, 0.32, Color.white)
+    }
+
+    @ViewBuilder private func off(_ d: CGFloat) -> some View {
+        let rgb = Self.rgb
+        disc(d, 1.0, rgb(50, 52, 95))
+        disc(d, 0.92, LinearGradient(colors: [rgb(160, 143, 201), rgb(100, 100, 166)], startPoint: .top, endPoint: .bottom))
+        disc(d, 0.86, LinearGradient(colors: [rgb(64, 74, 124), rgb(78, 94, 164)], startPoint: .top, endPoint: .bottom))
+        disc(d, 0.62, rgb(43, 45, 83))
+        disc(d, 0.58, LinearGradient(colors: [rgb(37, 36, 68), rgb(40, 41, 79)], startPoint: .top, endPoint: .bottom))
     }
 }
