@@ -37,7 +37,13 @@ INCLUDES=(-I "$BRIDGE/include" -I "$SPINE/include" -I "$HERE/src" -I "$HERE/thir
 LIBS=(-ld3d11 -ldxgi -ld3dcompiler_47 -lgdiplus -lgdi32 -lshell32 -lshlwapi
       -luser32 -lole32 -lwtsapi32 -lpsapi)
 
+# Version stamp injected into the 정보 tab (AboutView parity): build date and
+# the commit it was built from. Fall back to "dev" when git is unavailable.
+BUILD_DATE="$(date +%Y.%m.%d)"
+COMMIT="$(cd "$REPO" && git rev-parse --short HEAD 2>/dev/null || echo dev)"
+
 CXXFLAGS=(-std=c++17 -O2 -DNDEBUG -DUNICODE -D_UNICODE
+          -DBDON_BUILD_DATE="\"$BUILD_DATE\"" -DBDON_COMMIT="\"$COMMIT\""
           -Wno-nullability-completeness -Wno-macro-redefined)
 CFLAGS=(-O2 -w -DNDEBUG)
 LDFLAGS=(-Wl,--subsystem,windows -municode -static)
