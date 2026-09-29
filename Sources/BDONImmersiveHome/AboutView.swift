@@ -8,6 +8,8 @@ struct AboutPane: View {
     private static let mailBundleId = "com.apple.mail"
     private static let subject = "[BDON Immersive Home] 버그 리포트 / 제안"
 
+    @ObservedObject private var updater = Updater.shared
+
     /// "2026.09.29 (fa494c3)": build date, then the commit it was built from.
     static var version: String {
         let info = Bundle.main.infoDictionary
@@ -44,6 +46,8 @@ struct AboutPane: View {
                 .foregroundStyle(.white)
             }
             .padding(.vertical, 6)
+
+            UpdateRow(updater: updater)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("라이선스").font(Theme.font(13)).foregroundStyle(.white)
@@ -109,5 +113,39 @@ struct AboutPane: View {
         alert.messageText = "메일 앱을 열 수 없습니다"
         alert.informativeText = "\(contact) 주소를 클립보드에 복사했습니다."
         alert.runModal()
+    }
+}
+
+/// Update status line plus the one button that fits the state.
+private struct UpdateRow: View {
+    @ObservedObject var updater: Updater
+
+    private var status: String {
+        switch updater.state {
+        case .idle: return ""
+        case .checking: return "확인 중…"
+        case .upToDate: return "최신 버전입니다"
+        case .available(let release): return "새 버전 \(release.title)"
+        case .downloading(let fraction): return "내려받는 중 \(Int(fraction * 100))%"
+        case .installing: return "설치 중…"
+        case .failed(let message): return message
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 16) {
+            switch updater.state {
+            case .available:
+                LavenderButton(title: "업데이트 설치", systemImage: "arrow.down.circle", height: 40) { updater.install() }
+                    .frame(width: 200)
+            case .downloading, .installing, .checking:
+                ProgressView().controlSize(.small).tint(.white)
+            default:
+                LavenderButton(title: "업데이트 확인", systemImage: "arrow.clockwise", height: 40) { updater.check() }
+                    .frame(width: 200)
+            }
+            Text(status).font(Theme.font(13, .semibold)).foregroundStyle(.white.opacity(0.85))
+        }
+        .frame(height: 40)
     }
 }

@@ -3,6 +3,7 @@ import Combine
 import ServiceManagement
 
 /// Owns the wallpaper windows, the settings window and the status-bar menu.
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = WallpaperSettings.shared
     private lazy var wallpapers = WallpaperController(settings: settings)
@@ -13,11 +14,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var parallaxItem: NSMenuItem?
     private var shuffleItem: NSMenuItem?
     private var loginItem: NSMenuItem?
+    private var updateItem: NSMenuItem?
     private var subscriptions = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         wallpapers.start()
         buildMenu()
+        Updater.shared.start()
+
+        // Menu shows "업데이트 설치" once a newer release is found.
+        Updater.shared.$state
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in self?.refreshUpdateItem(state) }
+            .store(in: &subscriptions)
 
         // Keep the menu in step with changes made in the settings window.
         settings.objectWillChange
@@ -60,6 +69,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loginItem = login
 
         menu.addItem(.separator())
+        let update = menu.addItem(withTitle: "", action: #selector(installUpdate), keyEquivalent: "")
+        update.target = self
+        update.isHidden = true
+        updateItem = update
         menu.addItem(withTitle: "BDON Immersive Home에 관하여", action: #selector(openAbout), keyEquivalent: "").target = self
         menu.addItem(withTitle: "종료", action: #selector(quit), keyEquivalent: "q").target = self
 
@@ -88,6 +101,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Actions
+
+    private func refreshUpdateItem(_ state: Updater.State) {
+        guard case .available(let release) = state else {
+            updateItem?.isHidden = true
+            return
+        }
+        updateItem?.title = "업데이트 설치 (\(release.title))"
+        updateItem?.isHidden = false
+    }
+
+    @objc private func installUpdate() {
+        settingsWindow.present(tab: .about)
+        Updater.shared.install()
+    }
 
     @objc private func openAbout() {
         settingsWindow.present(tab: .about)

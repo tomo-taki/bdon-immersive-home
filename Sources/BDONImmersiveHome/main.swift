@@ -86,7 +86,7 @@ if !others.isEmpty {
 LegacyMigration.run()
 EventLog.removeOldLogs()
 
-let delegate = AppDelegate()
+let delegate = MainActor.assumeIsolated { AppDelegate() }
 app.delegate = delegate
 app.setActivationPolicy(.accessory)
 app.run()
