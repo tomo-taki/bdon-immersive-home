@@ -1,0 +1,6 @@
+vendor/spine-runtimes is not committed. Recreate it with:
+
+    git clone --filter=blob:none --sparse --branch 4.2 \
+        https://github.com/EsotericSoftware/spine-runtimes.git vendor/spine-runtimes
+    git -C vendor/spine-runtimes sparse-checkout set spine-c
+    git -C vendor/spine-runtimes checkout e7dc1435fa4a0083ab431f1b28e083c14a1f5c68

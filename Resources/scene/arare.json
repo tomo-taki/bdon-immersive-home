@@ -1,0 +1,162 @@
+{
+ "canvas": [
+  780,
+  720
+ ],
+ "layers": [
+  {
+   "name": "tail_r",
+   "file": "arare_tail_r",
+   "frame": [
+    206,
+    0,
+    325,
+    361
+   ],
+   "pivot": [
+    295,
+    315
+   ]
+  },
+  {
+   "name": "ribbon_r",
+   "file": "arare_ribbon_r",
+   "frame": [
+    263,
+    0,
+    434,
+    351
+   ],
+   "pivot": [
+    400,
+    300
+   ]
+  },
+  {
+   "name": "ribbon_l",
+   "file": "arare_ribbon_l",
+   "frame": [
+    422,
+    61,
+    588,
+    294
+   ],
+   "pivot": [
+    415,
+    300
+   ]
+  },
+  {
+   "name": "tail_l",
+   "file": "arare_tail_l",
+   "frame": [
+    468,
+    183,
+    689,
+    515
+   ],
+   "pivot": [
+    465,
+    395
+   ]
+  },
+  {
+   "name": "body",
+   "file": "arare_body",
+   "frame": [
+    3,
+    0,
+    414,
+    376
+   ],
+   "pivot": [
+    300,
+    330
+   ]
+  },
+  {
+   "name": "skirt",
+   "file": "arare_skirt",
+   "frame": [
+    110,
+    68,
+    453,
+    411
+   ],
+   "pivot": [
+    300,
+    320
+   ]
+  },
+  {
+   "name": "arm_l",
+   "file": "arare_arm_l",
+   "frame": [
+    100,
+    577,
+    199,
+    720
+   ],
+   "pivot": [
+    235,
+    540
+   ]
+  },
+  {
+   "name": "head",
+   "file": "arare_head",
+   "frame": [
+    187,
+    252,
+    463,
+    550
+   ],
+   "pivot": [
+    300,
+    335
+   ]
+  },
+  {
+   "name": "eyes",
+   "file": "arare_eyes",
+   "frame": [
+    294,
+    380,
+    414,
+    457
+   ],
+   "pivot": [
+    300,
+    335
+   ]
+  },
+  {
+   "name": "bangs",
+   "file": "arare_bangs",
+   "frame": [
+    256,
+    237,
+    505,
+    502
+   ],
+   "pivot": [
+    300,
+    335
+   ]
+  },
+  {
+   "name": "arm_r",
+   "file": "arare_arm_r",
+   "frame": [
+    220,
+    515,
+    427,
+    683
+   ],
+   "pivot": [
+    265,
+    600
+   ]
+  }
+ ]
+}

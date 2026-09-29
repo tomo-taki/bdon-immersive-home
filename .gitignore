@@ -1,0 +1,34 @@
+# Build output
+.build/
+dist/
+windows/native/out/
+windows/web/out/
+windows/*/build-tmp/
+windows/web/node_modules/
+windows/web/app/node_modules/
+web/node_modules/
+legacy/native-proto/.build/
+legacy/native-proto/vendor/
+
+# Game data: re-fetched from the moenotes exports (tools/fetch_spot.py,
+# tools/build_spot.py), never committed.
+spot-src/
+Resources/web/spots/
+Resources/web/thumbs/
+legacy/spots_vrfloor_only/
+windows/*/data/
+windows/web/app/web/
+assets-src/
+pieces/
+windows/web/qa/
+
+# Third-party checkout (spine-runtimes 4.2, sparse spine-c): see vendor/README
+vendor/spine-runtimes/
+
+# Scratch, QA captures, local tools
+work/
+prev/
+.vitest-tmp/
+.DS_Store
+*.dmg
+*.zip

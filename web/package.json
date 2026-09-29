@@ -1,0 +1,16 @@
+{
+  "name": "yumemita-wallpaper-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --format=esm --target=safari16 --minify --outfile=../Resources/web/app.js"
+  },
+  "dependencies": {
+    "@esotericsoftware/spine-threejs": "4.2.120",
+    "three": "0.184.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1",
+    "@types/three": "0.184.0"
+  }
+}

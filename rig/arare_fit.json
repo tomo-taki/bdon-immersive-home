@@ -1,0 +1,376 @@
+{
+ "scale": 1.0,
+ "fits": [
+  {
+   "name": "animalear_left",
+   "score": 0.9616,
+   "angle": 0.0,
+   "x": 430.0,
+   "y": 340.0
+  },
+  {
+   "name": "animalear_right",
+   "score": 0.9473,
+   "angle": -1.0,
+   "x": 297.0,
+   "y": 238.0
+  },
+  {
+   "name": "body_lower",
+   "score": 0.4759,
+   "angle": 68.0,
+   "x": 424.0,
+   "y": 218.0
+  },
+  {
+   "name": "body_upper",
+   "score": 0.3615,
+   "angle": 9.0,
+   "x": 447.0,
+   "y": 499.0
+  },
+  {
+   "name": "collar",
+   "score": 0.3256,
+   "angle": -1.0,
+   "x": 154.0,
+   "y": 326.0
+  },
+  {
+   "name": "earring_left",
+   "score": 0.8282,
+   "angle": -5.0,
+   "x": 377.0,
+   "y": 470.0
+  },
+  {
+   "name": "earring_right",
+   "score": 0.7033,
+   "angle": 31.0,
+   "x": 374.0,
+   "y": 474.0
+  },
+  {
+   "name": "eye_left",
+   "score": 0.7745,
+   "angle": 271.0,
+   "x": 382.0,
+   "y": 292.0
+  },
+  {
+   "name": "eye_right",
+   "score": 0.7378,
+   "angle": 274.0,
+   "x": 399.0,
+   "y": 276.0
+  },
+  {
+   "name": "face",
+   "score": 0.5523,
+   "angle": 180.0,
+   "x": 48.0,
+   "y": 490.0
+  },
+  {
+   "name": "face_shadow",
+   "score": 0.1953,
+   "angle": 45.0,
+   "x": 137.0,
+   "y": 575.0
+  },
+  {
+   "name": "hair_acc_left02",
+   "score": 0.819,
+   "angle": -2.0,
+   "x": 410.0,
+   "y": 402.0
+  },
+  {
+   "name": "hair_acc_right01",
+   "score": 0.8262,
+   "angle": 0.0,
+   "x": 323.0,
+   "y": 353.0
+  },
+  {
+   "name": "hair_front",
+   "score": 0.7282,
+   "angle": -1.0,
+   "x": 199.0,
+   "y": 313.0
+  },
+  {
+   "name": "hair_front_left",
+   "score": 0.6525,
+   "angle": 268.0,
+   "x": 205.0,
+   "y": 84.0
+  },
+  {
+   "name": "hair_left",
+   "score": 0.6919,
+   "angle": 0.0,
+   "x": 363.0,
+   "y": 323.0
+  },
+  {
+   "name": "hair_ribbon",
+   "score": 0.6412,
+   "angle": 288.0,
+   "x": 349.0,
+   "y": 84.0
+  },
+  {
+   "name": "hair_ribbon_left01",
+   "score": 0.4722,
+   "angle": 29.0,
+   "x": 468.0,
+   "y": 186.0
+  },
+  {
+   "name": "hair_ribbon_left02",
+   "score": 0.4587,
+   "angle": -1.0,
+   "x": 342.0,
+   "y": 19.0
+  },
+  {
+   "name": "hair_ribbon_right01",
+   "score": 0.4194,
+   "angle": 307.0,
+   "x": 508.0,
+   "y": 80.0
+  },
+  {
+   "name": "hair_ribbon_right02",
+   "score": 0.3625,
+   "angle": 122.0,
+   "x": 392.0,
+   "y": 52.0
+  },
+  {
+   "name": "hair_right",
+   "score": 0.69,
+   "angle": -1.0,
+   "x": 189.0,
+   "y": 310.0
+  },
+  {
+   "name": "hair_tail_left01",
+   "score": 0.8013,
+   "angle": 0.0,
+   "x": 474.0,
+   "y": 183.0
+  },
+  {
+   "name": "hair_tail_left02",
+   "score": 0.6712,
+   "angle": 0.0,
+   "x": 471.0,
+   "y": 325.0
+  },
+  {
+   "name": "hair_tail_right01",
+   "score": 0.4272,
+   "angle": 66.0,
+   "x": 299.0,
+   "y": 375.0
+  },
+  {
+   "name": "hair_tail_right02",
+   "score": 0.4851,
+   "angle": 18.0,
+   "x": 576.0,
+   "y": 33.0
+  },
+  {
+   "name": "head",
+   "score": 0.3376,
+   "angle": 343.0,
+   "x": 100.0,
+   "y": 138.0
+  },
+  {
+   "name": "left_arm_acc01",
+   "score": 0.3515,
+   "angle": 232.0,
+   "x": 273.0,
+   "y": 630.0
+  },
+  {
+   "name": "left_arm_acc01_back",
+   "score": 0.3523,
+   "angle": 80.0,
+   "x": 352.0,
+   "y": 594.0
+  },
+  {
+   "name": "left_arm_acc02",
+   "score": 0.9007,
+   "angle": 0.0,
+   "x": 139.0,
+   "y": 609.0
+  },
+  {
+   "name": "left_arm_acc02_back",
+   "score": 0.5962,
+   "angle": 279.0,
+   "x": 328.0,
+   "y": 534.0
+  },
+  {
+   "name": "left_arm_lower",
+   "score": 0.7529,
+   "angle": 149.0,
+   "x": 460.0,
+   "y": 128.0
+  },
+  {
+   "name": "left_arm_top",
+   "score": 0.9198,
+   "angle": 102.0,
+   "x": 412.0,
+   "y": 89.0
+  },
+  {
+   "name": "left_finger_D",
+   "score": 0.9594,
+   "angle": 179.0,
+   "x": 515.0,
+   "y": 4.0
+  },
+  {
+   "name": "left_finger_E",
+   "score": 0.9236,
+   "angle": 100.0,
+   "x": 284.0,
+   "y": 226.0
+  },
+  {
+   "name": "left_leg_lower",
+   "score": 0.6817,
+   "angle": -3.0,
+   "x": 4.0,
+   "y": 233.0
+  },
+  {
+   "name": "left_leg_upper",
+   "score": 0.2719,
+   "angle": 176.0,
+   "x": 561.0,
+   "y": 574.0
+  },
+  {
+   "name": "mouth",
+   "score": 0.9626,
+   "angle": -2.0,
+   "x": 305.0,
+   "y": 452.0
+  },
+  {
+   "name": "neck",
+   "score": 0.3651,
+   "angle": 37.0,
+   "x": 275.0,
+   "y": 634.0
+  },
+  {
+   "name": "necktie",
+   "score": 0.5443,
+   "angle": 91.0,
+   "x": 724.0,
+   "y": 399.0
+  },
+  {
+   "name": "right_arm_acc",
+   "score": 0.9341,
+   "angle": 0.0,
+   "x": 220.0,
+   "y": 546.0
+  },
+  {
+   "name": "right_arm_acc_back",
+   "score": 0.627,
+   "angle": 131.0,
+   "x": 399.0,
+   "y": 552.0
+  },
+  {
+   "name": "right_arm_lower",
+   "score": 0.7403,
+   "angle": 235.0,
+   "x": 323.0,
+   "y": 543.0
+  },
+  {
+   "name": "right_arm_top",
+   "score": 0.6096,
+   "angle": 122.0,
+   "x": 481.0,
+   "y": 199.0
+  },
+  {
+   "name": "right_arm_top_shadow",
+   "score": 0.18,
+   "angle": 298.0,
+   "x": 231.0,
+   "y": 330.0
+  },
+  {
+   "name": "right_elbow",
+   "score": 0.5452,
+   "angle": 172.0,
+   "x": 41.0,
+   "y": 158.0
+  },
+  {
+   "name": "right_finger_D",
+   "score": 0.8821,
+   "angle": -1.0,
+   "x": 308.0,
+   "y": 537.0
+  },
+  {
+   "name": "right_finger_E",
+   "score": 0.8613,
+   "angle": 360.0,
+   "x": 263.0,
+   "y": 567.0
+  },
+  {
+   "name": "right_hand",
+   "score": 0.7596,
+   "angle": -1.0,
+   "x": 262.0,
+   "y": 516.0
+  },
+  {
+   "name": "right_leg_lower",
+   "score": 0.5762,
+   "angle": 0.0,
+   "x": 30.0,
+   "y": 0.0
+  },
+  {
+   "name": "right_leg_upper",
+   "score": 0.7394,
+   "angle": 146.0,
+   "x": 611.0,
+   "y": 108.0
+  },
+  {
+   "name": "skirt_white",
+   "score": 0.4,
+   "angle": 270.0,
+   "x": 466.5,
+   "y": 79.5
+  },
+  {
+   "name": "skirt_yellow",
+   "score": 0.4294,
+   "angle": -1.0,
+   "x": 111.0,
+   "y": 68.0
+  }
+ ]
+}
