@@ -86,6 +86,15 @@ cp "$REPO/icon/tomori.png" "$APP/icons/tomori.png" 2>/dev/null || true
 cp "$REPO/icon/menubar@2x.png" "$APP/icons/menubar@2x.png" 2>/dev/null || true
 cp "$REPO/icon/menubar.png" "$APP/icons/menubar.png" 2>/dev/null || true
 
+# Version stamp for the 정보 pane: build date + the commit it was built from.
+# Read by main.js appVersion(); "개발 빌드" is shown when this file is absent.
+BUILD_DATE="$(date +%Y.%m.%d)"
+BUILD_COMMIT="$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo dev)"
+cat > "$APP/version.json" <<EOF
+{ "date": "$BUILD_DATE", "commit": "$BUILD_COMMIT" }
+EOF
+echo "    version.json: $BUILD_DATE ($BUILD_COMMIT)"
+
 echo "==> [4/6] Package for win32 x64 and arm64"
 cd "$APP"
 rm -rf "$OUT"

@@ -18,7 +18,7 @@
 
 "use strict";
 
-const { app, BrowserWindow, Tray, Menu, screen, powerMonitor, ipcMain, nativeImage } = require("electron");
+const { app, BrowserWindow, Tray, Menu, screen, powerMonitor, ipcMain, nativeImage, shell } = require("electron");
 const fs = require("fs");
 const path = require("path");
 
@@ -32,6 +32,11 @@ const easterEgg = require("./easter-egg");
 const APP_DIR = __dirname;
 const WEB_ROOT = path.join(APP_DIR, "web");
 const ICON_DIR = path.join(APP_DIR, "icons");
+// Build stamp written by windows/web/build.sh (date + short commit); "dev" fallback.
+const VERSION_FILE = path.join(APP_DIR, "version.json");
+// Bug-report / suggestion contact (matches AboutView.swift).
+const BUG_CONTACT = "tomo.taki@proton.me";
+const BUG_SUBJECT = "[BDON Immersive Home] 버그 리포트 / 제안";
 const FPS = 30; // page frame cap; the page self-drives with rAF (no driver=native)
 const POINTER_HZ = 20;
 const POINTER_INTERVAL_MS = 1000 / POINTER_HZ;
@@ -72,6 +77,42 @@ function log(line) {
 }
 
 // ---- App state -------------------------------------------------------------
+
+/**
+ * Version string for the 정보 pane, e.g. "2026.09.29 (fa494c3)". Written into
+ * the packaged app by windows/web/build.sh as version.json; "개발 빌드" when
+ * absent (running from source / dev).
+ */
+function appVersion() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(VERSION_FILE, "utf8"));
+    const date = typeof raw.date === "string" && raw.date ? raw.date : null;
+    const commit = typeof raw.commit === "string" && raw.commit ? raw.commit : null;
+    if (date && commit) {
+      return `${date} (${commit})`;
+    }
+    if (date) {
+      return date;
+    }
+  } catch {
+    // no version.json (dev run)
+  }
+  return "개발 빌드";
+}
+
+/**
+ * Open a pre-filled bug-report / suggestion draft in the default mail client
+ * (mirrors AboutView.mail()). shell.openExternal hands the mailto: URL to the
+ * OS handler. "+" is left encoded as %2B so clients do not read it as a space.
+ */
+function reportBug() {
+  const spot = currentSpot();
+  const spotLine = spot ? `${spot.id} ${spot.name}` : "-";
+  const body = ["", "", "", "---", `BDON Immersive Home ${appVersion()}`, `현재 장면: ${spotLine}`].join("\n");
+  const query = `subject=${encodeURIComponent(BUG_SUBJECT)}&body=${encodeURIComponent(body).replace(/%2B/g, "%2B")}`;
+  const url = `mailto:${BUG_CONTACT}?${query}`;
+  shell.openExternal(url).catch((err) => log(`reportBug failed: ${err.message}`));
+}
 
 let settings = null;
 let catalog = null;
@@ -526,10 +567,11 @@ function openSettings() {
     return;
   }
   // Fit the window into the work area of the display under the cursor. The
-  // layout is designed at 1000x720; on a smaller screen (a 1024x768 VM) the
-  // whole page is zoomed down so the grid and the footer both stay visible.
-  const DESIGN_W = 1000;
-  const DESIGN_H = 720;
+  // layout is designed at 980x700 (matching the macOS window); on a smaller
+  // screen (a 1024x768 VM) the whole page is zoomed down so both columns and
+  // the footer stay visible.
+  const DESIGN_W = 980;
+  const DESIGN_H = 700;
   const work = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   const zoom = Math.max(0.5, Math.min(1, (work.width - 24) / DESIGN_W, (work.height - 48) / DESIGN_H));
   settingsWindow = new BrowserWindow({
@@ -539,8 +581,8 @@ function openSettings() {
     minHeight: Math.round(Math.min(560, DESIGN_H) * zoom),
     useContentSize: true,
     center: true,
-    title: "배경 설정",
-    backgroundColor: "#1c1c1e",
+    title: "설정",
+    backgroundColor: "#1c2154",
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(APP_DIR, "preload-settings.js"),
@@ -578,6 +620,8 @@ function registerIpc() {
   ipcMain.handle("settings:load", () => ({
     bands: catalog.byBand(),
     webRoot: WEB_ROOT,
+    iconRoot: ICON_DIR,
+    version: appVersion(),
     ...settingsSnapshot(),
   }));
 
@@ -628,6 +672,10 @@ function registerIpc() {
       applyEasterEgg(next);
     }
     return settingsSnapshot();
+  });
+
+  ipcMain.handle("settings:reportBug", () => {
+    reportBug();
   });
 
   ipcMain.on("wallpaper-event", (_e, message) => onWallpaperEvent(message));

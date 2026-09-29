@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld("settingsApi", {
   // matches codes and may flip the egg. Returns the resulting snapshot.
   typeCode: (code) => ipcRenderer.invoke("settings:typeCode", code),
 
+  // Open a pre-filled bug-report / suggestion mail draft (정보 pane).
+  reportBug: () => ipcRenderer.invoke("settings:reportBug"),
+
   // Main pushes a fresh snapshot when something changes underneath (shuffle
   // timer advanced the Spot, egg flipped, etc.).
   onUpdate: (handler) => {
