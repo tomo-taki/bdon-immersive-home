@@ -441,16 +441,17 @@ const int kSubRowH = 44;
 // teal fill when selected, a hairline under it.
 void subTabRow(Graphics& g, int y, const std::string& title, Image* icon,
                bool selected, const char* badge, std::function<void()> onClick) {
-    float x = 0, w = (float)kSubTabW;
+    // The column starts right of the sidebar (drawing and hit rects alike).
+    const float x = (float)kSidebarW, w = (float)kSubTabW;
     if (selected) {
         LinearGradientBrush fill(RectF(x, y - 0.5f, w, kSubRowH + 1.0f),
                                  rgb(77, 184, 199, 242), rgb(61, 163, 184, 204), LinearGradientModeVertical);
         g.FillRectangle(&fill, x, (float)y, w, (float)kSubRowH);
     }
-    float tx = 16;
+    float tx = x + 16;
     if (icon && icon->GetLastStatus() == Ok) {
-        g.DrawImage(icon, 16, y + (kSubRowH - 22) / 2, 22, 22);
-        tx = 16 + 22 + 8;
+        g.DrawImage(icon, x + 16, (float)(y + (kSubRowH - 22) / 2), 22.0f, 22.0f);
+        tx = x + 16 + 22 + 8;
     }
     drawText(g, title.c_str(), tx, y + (kSubRowH - 14) / 2.0f, 14, T::white, true);
     if (badge) {
@@ -461,12 +462,12 @@ void subTabRow(Graphics& g, int y, const std::string& title, Image* icon,
         drawText(g, badge, bx, by + 1, 10, T::white, true, StringAlignmentCenter, bw);
     }
     fillRect(g, x, (float)(y + kSubRowH - 1), w, 1, rgb(255, 255, 255, 71));   // hairline
-    addHit(0, y, kSubTabW, kSubRowH, std::move(onClick));
+    addHit(kSidebarW, y, kSubTabW, kSubRowH, std::move(onClick));
 }
 
 void paintSubTabs(Graphics& g, RECT client) {
     // Column background: panel at 0.72.
-    fillRect(g, 0, 0, (float)kSubTabW, (float)client.bottom, rgb(23, 26, 64, 184));
+    fillRect(g, (float)kSidebarW, 0, (float)kSubTabW, (float)client.bottom, rgb(23, 26, 64, 184));
 
     int top = kColumnTop + 1;
     switch (g_tab) {

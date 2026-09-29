@@ -5,9 +5,9 @@
 //   spine: premultiplied texel * premultiplied vertex colour, tint black
 //   final: CSS filter saturate(1.04) brightness(1.02) contrast(1.02)
 //
-// HLSL is row-major with row vectors by default; we upload matrices already
-// transposed (see onp_math::transpose) and multiply mul(float4, matrix) so the
-// arithmetic equals the Swift column-vector (matrix * vector) form.
+// Matrices: our Mat4 stores columns contiguously and the cbuffer declares
+// them `row_major`, so HLSL sees the transpose and mul(float4, matrix)
+// equals the Swift column-vector (matrix * vector) form. Upload as is.
 
 #pragma once
 

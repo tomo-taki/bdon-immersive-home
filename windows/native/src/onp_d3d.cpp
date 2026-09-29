@@ -11,7 +11,7 @@
 
 namespace onp {
 
-// cbuffer layout (b0): two row-major float4x4, uploaded pre-transposed.
+// cbuffer layout (b0): two float4x4 in Mat4's column storage (see setUniforms).
 struct Uniforms {
     Mat4 viewProjection;
     Mat4 model;
@@ -302,8 +302,11 @@ void SwapTarget::release() {
 // ---- draw ----
 
 static void setUniforms(D3DContext& c, const Mat4& viewProjection, const Mat4& model) {
-    // HLSL row_major float4x4 wants the transpose of our column-major storage.
-    Uniforms u{transpose(viewProjection), transpose(model)};
+    // Our Mat4 stores columns contiguously. HLSL `row_major` reads each 16-byte
+    // chunk as a row, so it sees M^T, and mul(float4 v, M^T) == M * v: upload
+    // as is. (Transposing here as well multiplied by M^T: wrong camera, and
+    // the Spine residents projected off screen.)
+    Uniforms u{viewProjection, model};
     D3D11_MAPPED_SUBRESOURCE m;
     if (SUCCEEDED(c.ctx->Map(c.uniforms, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
         memcpy(m.pData, &u, sizeof(u));
