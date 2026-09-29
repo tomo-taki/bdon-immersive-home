@@ -74,6 +74,7 @@ if !others.isEmpty {
 }
 
 LegacyMigration.run()
+EventLog.removeOldLogs()
 
 let delegate = AppDelegate()
 app.delegate = delegate

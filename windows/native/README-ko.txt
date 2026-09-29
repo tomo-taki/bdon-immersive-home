@@ -28,7 +28,6 @@ Windows 11 은 새 트레이 아이콘을 작업 표시줄의 ^ (숨겨진 아�
 파일 위치
 ---------
 - 설정 파일 : %APPDATA%\BDONImmersiveHome\settings.json
-- 로그 파일 : %LOCALAPPDATA%\BDONImmersiveHome\log.txt
 
 SmartScreen 안내
 ----------------

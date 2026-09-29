@@ -125,7 +125,7 @@ final class WallpaperController {
     /// for a display the app has not seen.
     private func rebuildWindows() {
         guard let spot = settings.spot else {
-            NSLog("No Spot data bundled")
+            EventLog.write("No Spot data bundled")
             return
         }
         let screens = NSScreen.screens

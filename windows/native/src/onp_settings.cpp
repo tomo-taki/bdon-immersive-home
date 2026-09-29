@@ -177,7 +177,18 @@ static std::string timestamp() {
 }
 
 void logInit() {
-    g_logPath = wideToUtf8(localAppDataDir()) + "\\log.txt";
+    // Release builds leave no log on the user's machine. Set BDON_LOG=1 to
+    // get %LOCALAPPDATA%\BDONImmersiveHome\log.txt while debugging.
+    std::wstring dir = localAppDataDir();
+    std::wstring path = dir + L"\\log.txt";
+    wchar_t flag[8] = {};
+    bool enabled = GetEnvironmentVariableW(L"BDON_LOG", flag, 8) > 0 && flag[0] == L'1';
+    if (!enabled) {
+        DeleteFileW(path.c_str());         // drop a log left by an older build
+        RemoveDirectoryW(dir.c_str());     // only succeeds when nothing else is in it
+        return;
+    }
+    g_logPath = wideToUtf8(path);
     logLine("=== BDONImmersiveHome started ===");
 }
 

@@ -16,7 +16,7 @@ enum SpotCatalog {
         guard let url = webRoot?.appendingPathComponent("spots/index.json"),
               let data = try? Data(contentsOf: url),
               let list = try? JSONDecoder().decode([Spot].self, from: data) else {
-            NSLog("Spot index missing")
+            EventLog.write("Spot index missing")
             return []
         }
         return list

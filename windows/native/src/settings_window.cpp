@@ -269,9 +269,12 @@ void drawText(Graphics& g, const char* s, float x, float y, float size, Color c,
               bool bold = true, StringAlignment align = StringAlignmentNear, float wrapW = 0) {
     Font font(&uiFamily(), size, bold ? FontStyleBold : FontStyleRegular, UnitPixel);
     SolidBrush br(c);
-    StringFormat sf;
+    // Typographic format: no GDI+ side padding or extra tracking, so text
+    // starts where it is placed and measures like SwiftUI's.
+    StringFormat sf(StringFormat::GenericTypographic());
+    sf.SetFormatFlags(sf.GetFormatFlags() | StringFormatFlagsMeasureTrailingSpaces);
     sf.SetAlignment(align);
-    if (wrapW <= 0) sf.SetFormatFlags(StringFormatFlagsNoWrap);
+    if (wrapW <= 0) sf.SetFormatFlags(sf.GetFormatFlags() | StringFormatFlagsNoWrap);
     RectF layout(x, y, wrapW > 0 ? wrapW : 4000.0f, 4000.0f);
     g.DrawString(toW(s).c_str(), -1, &font, layout, &sf, &br);
 }
@@ -279,7 +282,7 @@ void drawText(Graphics& g, const char* s, float x, float y, float size, Color c,
 // Measured height of wrapped text (for the licence box layout).
 float measureTextHeight(Graphics& g, const char* s, float size, float wrapW, bool bold) {
     Font font(&uiFamily(), size, bold ? FontStyleBold : FontStyleRegular, UnitPixel);
-    StringFormat sf;
+    StringFormat sf(StringFormat::GenericTypographic());
     RectF layout(0, 0, wrapW, 4000.0f), bounds;
     g.MeasureString(toW(s).c_str(), -1, &font, layout, &sf, &bounds);
     return bounds.Height;
@@ -404,17 +407,21 @@ void paintSidebar(Graphics& g, RECT client) {
 
         if (selected) {
             // Teal arrow slab, shifted +12 into the middle column.
+            // Same width as the other slabs, offset +12: the arrow tip ends 12pt
+            // into the middle column, just short of the sub-row text (x+16).
             float sx = (float)(leftPad + kSelectedShift);
-            float sw = (float)(kSidebarW - leftPad - 0 + 8);   // reaches to/over the column edge
+            float sw = (float)(kSidebarW - leftPad);
             GraphicsPath slab;
             arrowSlabPath(slab, sx, (float)y, sw, (float)kTabH);
             LinearGradientBrush fill(RectF(sx, y - 0.5f, sw, kTabH + 1.0f), T::tealTop, T::tealBottom, LinearGradientModeVertical);
             g.FillPath(&fill, &slab);
             Pen edge(rgb(255, 255, 255, 191), 1.5f);
             g.DrawPath(&edge, &slab);
-            // Title centred with a trailing sparkle.
+            // Title centred between the left edge and the sparkle, like the
+            // mac HStack (Spacer, title, Spacer, sparkle + 20pt padding).
             drawText(g, tabs[i].title, sx, y + (kTabH - 16) / 2.0f - 1, 16, T::white, true,
-                     StringAlignmentCenter, sw - 20);
+                     StringAlignmentCenter, sw - 20 - 11 - 8);
+            drawText(g, "\xE2\x9C\xA6", sx + sw - 20 - 11, y + (kTabH - 12) / 2.0f, 12, T::white, true);   // ✦
         } else {
             // Indigo slab with a light top edge, right padding 18.
             float sx = (float)leftPad;
@@ -953,7 +960,7 @@ void paint(HDC hdc, RECT client) {
     Graphics g(hdc);
     g.SetSmoothingMode(SmoothingModeAntiAlias);
     g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
-    g.SetTextRenderingHint(TextRenderingHintAntiAlias);
+    g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
     g.ScaleTransform(g_uiScale, g_uiScale);   // everything below is logical px
 
     g_hits.clear();

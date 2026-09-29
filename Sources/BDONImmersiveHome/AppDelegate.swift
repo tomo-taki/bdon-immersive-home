@@ -118,7 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try service.register()
             }
         } catch {
-            NSLog("Login item change failed: \(error)")
+            EventLog.write("Login item change failed: \(error)")
         }
         refreshMenu()
     }
