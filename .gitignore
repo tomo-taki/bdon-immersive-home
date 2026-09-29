@@ -32,3 +32,4 @@ prev/
 .DS_Store
 *.dmg
 *.zip
+windows/web/app/version.json
