@@ -4,10 +4,9 @@
 #
 #   tag    b<commit count>          apps compare it with their own build number
 #   title  2026.09.29 (5786b63)
-#   assets BDONImmersiveHome-mac.zip              (the .app, for self-update)
-#          BDONImmersiveHome.dmg                  (first install)
-#          BDONImmersiveHome-Native-win-x64.zip
-#          BDONImmersiveHome-Native-win-arm64.zip
+#   assets BDONImmersiveHome.dmg                  (install and self-update)
+#          BDONImmersiveHome-win-x64.zip
+#          BDONImmersiveHome-win-arm64.zip
 #          SHA256SUMS.txt                         (checked before applying)
 #
 # Usage: tools/release.sh [--dry-run]    (needs `gh auth login`)
@@ -32,9 +31,8 @@ BUILT="$(/usr/libexec/PlistBuddy -c 'Print :BDONCommit' "$APP/Contents/Info.plis
 TITLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist") ($COMMIT)"
 
 rm -rf "$OUT" && mkdir -p "$OUT"
-ditto -c -k --keepParent "$APP" "$OUT/BDONImmersiveHome-mac.zip"
 cp dist/BDONImmersiveHome.dmg "$OUT/"
-cp dist/windows/BDONImmersiveHome-Native-win-x64.zip dist/windows/BDONImmersiveHome-Native-win-arm64.zip "$OUT/"
+cp dist/windows/BDONImmersiveHome-win-x64.zip dist/windows/BDONImmersiveHome-win-arm64.zip "$OUT/"
 (cd "$OUT" && shasum -a 256 BDONImmersiveHome* > SHA256SUMS.txt)
 cat "$OUT/SHA256SUMS.txt"
 

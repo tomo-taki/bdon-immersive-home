@@ -19,8 +19,7 @@ if [ ! -f Resources/web/spots/index.json ]; then
 fi
 
 # Renderer: native Metal (Sources/BDONImmersiveHome/Render + Sources/SpineBridge
-# over vendor/spine-runtimes spine-c 4.2). The WebKit renderer (web/) is no
-# longer bundled; its Swift side is in legacy/webkit.
+# over vendor/spine-runtimes spine-c 4.2).
 swift build -c release --disable-sandbox
 
 # Settings thumbnails (with and without characters), rendered by the app itself.
@@ -34,11 +33,8 @@ cp ".build/release/BDONImmersiveHome" "$APP/Contents/MacOS/BDONImmersiveHome"
 # Spot data, thumbnails and band logos only (no web renderer).
 cp -R Resources/web/spots Resources/web/thumbs Resources/web/bands "$APP/Contents/Resources/web/"
 
-# App icon: Takamatsu Tomori (icon/tomori.png -> tools/make_icon.py).
-[ -f icon/AppIcon.icns ] || python3 tools/make_icon.py
+# App icon (Takamatsu Tomori) and the monochrome menu-bar template icon.
 cp icon/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-# Menu-bar template icon (monochrome Tomori, tools/make_menu_icon.py).
-[ -f icon/menubar@2x.png ] || python3 tools/make_menu_icon.py
 cp icon/menubar.png icon/menubar@2x.png "$APP/Contents/Resources/"
 
 # Version shown in 설정 > 정보: build date and the short commit hash the

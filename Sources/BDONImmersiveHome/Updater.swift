@@ -7,9 +7,9 @@ import Foundation
 ///   GET api.github.com/repos/<repo>/releases/latest   (newest non-draft, non-prerelease)
 ///     tag  "b<commit count>"  -> compared with CFBundleVersion (also the commit count)
 ///     name "2026.09.29 (5786b63)"
-///     assets BDONImmersiveHome-mac.zip + SHA256SUMS.txt  (tools/release.sh)
+///     assets BDONImmersiveHome.dmg + SHA256SUMS.txt  (tools/release.sh)
 ///
-///   download zip -> verify SHA-256 -> ditto -x -> same bundle id?
+///   download DMG -> verify SHA-256 -> mount, copy the .app -> same bundle id?
 ///   -> replace this .app in place -> relaunch.
 ///
 /// A file URLSession downloads carries no quarantine flag, so the updated app
@@ -38,7 +38,7 @@ final class Updater: ObservableObject {
 
     @Published private(set) var state = State.idle
 
-    private static let packageName = "BDONImmersiveHome-mac.zip"
+    private static let packageName = "BDONImmersiveHome.dmg"
     private static let checksumName = "SHA256SUMS.txt"
     private static let checkEvery: TimeInterval = 24 * 60 * 60
     private static let firstCheckDelay: TimeInterval =
@@ -134,7 +134,7 @@ final class Updater: ObservableObject {
         let (sums, _) = try await URLSession.shared.data(from: release.checksums)
         guard let expected = Self.checksum(for: Self.packageName, in: sums) else { throw URLError(.cannotParseResponse) }
 
-        let zip = work.appendingPathComponent(Self.packageName)
+        let package = work.appendingPathComponent(Self.packageName)
         let downloaded: URL = try await withCheckedThrowingContinuation { continuation in
             let task = URLSession.shared.downloadTask(with: release.package) { url, response, error in
                 guard let url, (response as? HTTPURLResponse)?.statusCode == 200 else {
@@ -142,8 +142,8 @@ final class Updater: ObservableObject {
                 }
                 // The temporary file is deleted when this handler returns.
                 do {
-                    try FileManager.default.moveItem(at: url, to: zip)
-                    continuation.resume(returning: zip)
+                    try FileManager.default.moveItem(at: url, to: package)
+                    continuation.resume(returning: package)
                 } catch {
                     continuation.resume(throwing: error)
                 }
@@ -161,7 +161,14 @@ final class Updater: ObservableObject {
         guard try Self.sha256(of: downloaded) == expected else { throw URLError(.cannotDecodeContentData) }
 
         let unpacked = work.appendingPathComponent("app")
-        try Self.run("/usr/bin/ditto", ["-x", "-k", downloaded.path, unpacked.path])
+        let volume = work.appendingPathComponent("volume")
+        try Self.run("/usr/bin/hdiutil", ["attach", downloaded.path, "-nobrowse", "-readonly", "-noautoopen",
+                                          "-mountpoint", volume.path])
+        defer { try? Self.run("/usr/bin/hdiutil", ["detach", volume.path, "-force"]) }
+        let volumeApps = try FileManager.default.contentsOfDirectory(at: volume, includingPropertiesForKeys: nil)
+        guard let source = volumeApps.first(where: { $0.pathExtension == "app" }) else { throw URLError(.cannotOpenFile) }
+        try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
+        try Self.run("/usr/bin/ditto", [source.path, unpacked.appendingPathComponent(source.lastPathComponent).path])
         let apps = try FileManager.default.contentsOfDirectory(at: unpacked, includingPropertiesForKeys: nil)
         guard let app = apps.first(where: { $0.pathExtension == "app" }),
               Bundle(url: app)?.bundleIdentifier == Bundle.main.bundleIdentifier else {

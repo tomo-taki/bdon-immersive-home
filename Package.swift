@@ -1,7 +1,7 @@
 // swift-tools-version:5.9
 // BDON Immersive Home: menu-bar app drawing game Home Spots on the desktop
 // with a native Metal renderer (spine-c 4.2 for the residents, a glb reader
-// for the room). The WebKit renderer it replaced lives in legacy/webkit.
+// for the room).
 import PackageDescription
 
 let package = Package(

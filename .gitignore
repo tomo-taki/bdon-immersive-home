@@ -33,3 +33,33 @@ prev/
 *.dmg
 *.zip
 windows/web/app/version.json
+
+# Not part of the build: local tool settings, the retired hand rig /
+# SpriteKit / WebKit / Electron tracks, and icon sources (the built
+# AppIcon.icns and menubar PNGs are committed).
+.kiro/
+Resources/scene/
+Resources/web/app.js
+Resources/web/index.html
+legacy/
+rig/
+web/
+windows/web/
+windows/native/SPEC.md
+windows/native/tests/room_dump.cpp
+icon/AppIcon.iconset/
+icon/AppIcon_1024.png
+icon/bands/
+icon/menubar_master.png
+icon/tomori.png
+tools/atlas.py
+tools/compose.py
+tools/export_rig.py
+tools/eyes_preview.py
+tools/fit_outline.py
+tools/fit_parts.py
+tools/overlay.py
+tools/prepare_assets.py
+tools/refine_parts.py
+tools/make_icon.py
+tools/make_menu_icon.py

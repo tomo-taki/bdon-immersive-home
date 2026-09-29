@@ -33,9 +33,9 @@ namespace onp {
 namespace {
 
 #if defined(_M_ARM64) || defined(__aarch64__)
-const char* kPackage = "BDONImmersiveHome-Native-win-arm64.zip";
+const char* kPackage = "BDONImmersiveHome-win-arm64.zip";
 #else
-const char* kPackage = "BDONImmersiveHome-Native-win-x64.zip";
+const char* kPackage = "BDONImmersiveHome-win-x64.zip";
 #endif
 const char* kChecksums = "SHA256SUMS.txt";
 const char* kDefaultApi = "https://api.github.com";

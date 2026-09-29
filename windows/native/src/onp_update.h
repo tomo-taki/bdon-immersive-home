@@ -2,7 +2,7 @@
 //
 //   GET api.github.com/repos/<repo>/releases/latest
 //     tag "b<commit count>" > BDON_BUILD_NUMBER  -> an update exists
-//     asset BDONImmersiveHome-Native-win-<arch>.zip + SHA256SUMS.txt
+//     asset BDONImmersiveHome-win-<arch>.zip + SHA256SUMS.txt
 //   download -> SHA-256 (bcrypt) -> tar.exe -xf -> run the new exe with
 //   --update: it quits this copy, copies itself over the install folder and
 //   starts the installed exe (the same path as the zip's install offer).

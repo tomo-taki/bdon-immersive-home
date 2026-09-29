@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # windows/native/package.sh -- assemble the distributable zips:
-#   dist/windows/BDONImmersiveHome-Native-win-x64.zip
-#   dist/windows/BDONImmersiveHome-Native-win-arm64.zip
+#   dist/windows/BDONImmersiveHome-win-x64.zip
+#   dist/windows/BDONImmersiveHome-win-arm64.zip
 # Each zip = BDONImmersiveHome.exe + data/ (spots, thumbs, bands) + README-ko.txt.
 #
 # Run windows/native/build.sh first. Temp staging goes under build-tmp.
@@ -36,7 +36,7 @@ package_arch() {
   # Drop macOS cruft that scatters into copies.
   find "$root" -name ".DS_Store" -delete 2>/dev/null || true
 
-  local zip="$DIST/BDONImmersiveHome-Native-win-$arch.zip"
+  local zip="$DIST/BDONImmersiveHome-win-$arch.zip"
   rm -f "$zip"
   ( cd "$STAGE/$arch" && zip -qr -X "$zip" "BDONImmersiveHome" )
   echo "packaged $zip ($(du -h "$zip" | cut -f1))"
