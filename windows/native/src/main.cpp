@@ -28,6 +28,7 @@
 
 #include "onp_d3d.h"
 #include "onp_install.h"
+#include "onp_update.h"
 #include "onp_stage.h"
 #include "onp_settings.h"
 #include "onp_spot.h"
@@ -39,10 +40,11 @@ using namespace onp;
 
 static const wchar_t* kWindowClass = L"BDONImmersiveHomeWnd";
 static const UINT WM_APP_TRAY = WM_APP + 1;
+static const UINT WM_APP_UPDATE = WM_APP + 2;   // update status changed (worker thread)
 static const UINT kTrayId = 1;
 // Tray menu command ids.
 enum {
-    kCmdSettings = 100, kCmdCharacters, kCmdShuffle, kCmdQuit, kCmdAutostart,
+    kCmdSettings = 100, kCmdCharacters, kCmdShuffle, kCmdQuit, kCmdAutostart, kCmdUpdate,
 };
 static_assert(kCmdQuit == onp::kQuitCommand, "installer posts this id to quit a running copy");
 
@@ -52,6 +54,7 @@ std::vector<SpotIndexEntry> g_catalog;
 
 // Forward decls from settings_window.cpp.
 void openSettingsWindow(HINSTANCE hinst);
+void refreshSettingsWindow();
 void onSettingsChanged();               // called by settings window on any change
 
 // ---- per-monitor window ----
@@ -389,6 +392,49 @@ static void addTray(HWND hwnd, HINSTANCE hinst) {
     if (!g_trayAdded) logLine("tray icon not added yet; will retry");
 }
 
+// ---- self-update (onp_update) ----
+
+static std::wstring widenUtf8(const std::string& s) {
+    int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+    std::wstring w(n, 0);
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
+    if (!w.empty() && w.back() == L'\0') w.pop_back();
+    return w;
+}
+
+static std::wstring updateMenuText() {
+    UpdateStatus u = updateStatus();
+    switch (u.state) {
+        case UpdateState::Available:   return L"\uC5C5\uB370\uC774\uD2B8 \uC124\uCE58 (" + widenUtf8(u.title) + L")";   // 업데이트 설치 (…)
+        case UpdateState::Checking:    return L"\uC5C5\uB370\uC774\uD2B8 \uD655\uC778 \uC911\u2026";                  // 업데이트 확인 중…
+        case UpdateState::Downloading: return L"\uC5C5\uB370\uC774\uD2B8 \uB0B4\uB824\uBC1B\uB294 \uC911 " + std::to_wstring(u.percent) + L"%";   // 내려받는 중 N%
+        case UpdateState::Installing:  return L"\uC5C5\uB370\uC774\uD2B8 \uC124\uCE58 \uC911\u2026";                  // 업데이트 설치 중…
+        default:                       return L"\uC5C5\uB370\uC774\uD2B8 \uD655\uC778";                                // 업데이트 확인
+    }
+}
+
+static UINT updateMenuFlags() {
+    UpdateState s = updateStatus().state;
+    bool busy = s == UpdateState::Checking || s == UpdateState::Downloading || s == UpdateState::Installing;
+    return MF_STRING | (busy ? MF_GRAYED : 0);
+}
+
+// One balloon per found release.
+static void announceUpdate() {
+    static std::string announced;
+    UpdateStatus u = updateStatus();
+    if (u.state != UpdateState::Available || u.title == announced || !g_trayAdded) return;
+    announced = u.title;
+    NOTIFYICONDATAW n = g_tray;
+    n.uFlags = NIF_INFO;
+    n.dwInfoFlags = NIIF_INFO;
+    wcsncpy_s(n.szInfoTitle, L"BDON Immersive Home", _TRUNCATE);
+    std::wstring text = L"\uC0C8 \uBC84\uC804 " + widenUtf8(u.title) + L". \uD2B8\uB808\uC774 \uBA54\uB274\uC5D0\uC11C \uC124\uCE58\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.";
+    // 새 버전 …. 트레이 메뉴에서 설치할 수 있습니다.
+    wcsncpy_s(n.szInfo, text.c_str(), _TRUNCATE);
+    Shell_NotifyIconW(NIM_MODIFY, &n);
+}
+
 static void showTrayMenu(HWND hwnd) {
     POINT p; GetCursorPos(&p);
     HMENU menu = CreatePopupMenu();
@@ -400,6 +446,7 @@ static void showTrayMenu(HWND hwnd) {
     AppendMenuW(menu, MF_STRING | (onp::autostartEnabled() ? MF_CHECKED : 0), kCmdAutostart,
                 L"Windows \uC2DC\uC791 \uC2DC \uC790\uB3D9 \uC2E4\uD589"); // Windows 시작 시 자동 실행
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, updateMenuFlags(), kCmdUpdate, updateMenuText().c_str());
     AppendMenuW(menu, MF_STRING, kCmdQuit, L"\uC885\uB8CC"); // 종료
     SetForegroundWindow(hwnd);
     TrackPopupMenu(menu, TPM_RIGHTBUTTON, p.x, p.y, 0, hwnd, nullptr);
@@ -468,7 +515,15 @@ static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
                 case kCmdShuffle: g_settings.shuffle = !g_settings.shuffle; g_settings.save(); break;
                 case kCmdQuit: PostQuitMessage(0); break;
                 case kCmdAutostart: onp::setAutostart(!onp::autostartEnabled()); break;
+                case kCmdUpdate:
+                    if (updateStatus().state == UpdateState::Available) installUpdate();
+                    else checkForUpdate();
+                    break;
             }
+            return 0;
+        case WM_APP_UPDATE:
+            announceUpdate();
+            refreshSettingsWindow();
             return 0;
         case WM_WTSSESSION_CHANGE:
             if (wparam == WTS_SESSION_LOCK) g_sessionLocked = true;
@@ -531,6 +586,11 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
 
     // Per-user install: `--uninstall` from Settings > Apps, and an install
     // offer when run from anywhere but the install folder (e.g. the zip).
+    // `--update`: an unpacked release replacing the installed copy (onp_update).
+    if (argc >= 1 && wcscmp(argv[0], L"--update") == 0) {
+        onp::applyDownloadedUpdate();
+        return 0;
+    }
     if (argc >= 1 && wcscmp(argv[0], L"--uninstall") == 0) {
         onp::uninstall();
         return 0;
@@ -571,6 +631,7 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
     WTSRegisterSessionNotification(main, NOTIFY_FOR_THIS_SESSION);
     addTray(main, hinst);
     createMonitorWindows(hinst);
+    startUpdateChecks(main, WM_APP_UPDATE);
 
     // Load the initial spot.
     requestSpot(g_settings.spotId);

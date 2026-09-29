@@ -43,7 +43,7 @@ final class Updater: ObservableObject {
     private static let checkEvery: TimeInterval = 24 * 60 * 60
     private static let firstCheckDelay: TimeInterval =
         Double(ProcessInfo.processInfo.environment["BDON_UPDATE_DELAY"] ?? "") ?? 15
-    private static let defaultRepo = "zgghw2t4cd-blip/bdon-immersive-home"
+    private static let defaultRepo = "tomo-taki/bdon-immersive-home"
 
     private var timer: Timer?
     private var progress: NSKeyValueObservation?

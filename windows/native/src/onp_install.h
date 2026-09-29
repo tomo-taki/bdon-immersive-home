@@ -14,6 +14,7 @@ bool isInstalledCopy();
 // Outside the install folder: ask to install (or update). Returns true when
 // this process should exit (installed copy launched, or the user cancelled).
 bool offerInstall();
+bool installUpdateCopy();        // `--update`: same install, no prompt
 void uninstall();                // `--uninstall`, from Settings > Apps
 
 bool autostartEnabled();         // HKCU Run points at this exe

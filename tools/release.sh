@@ -18,7 +18,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-REPO="${BDON_REPO:-zgghw2t4cd-blip/bdon-immersive-home}"
+REPO="${BDON_REPO:-tomo-taki/bdon-immersive-home}"
 APP="dist/BDON Immersive Home.app"
 OUT="work/release"
 DRY="${1:-}"

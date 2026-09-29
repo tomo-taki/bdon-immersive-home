@@ -134,7 +134,7 @@ static void launch(const std::wstring& exe) {
 
 // ---- install ----
 
-static bool install() {
+static bool install(bool silent) {
     stopRunningCopy();
     std::wstring from = dirOf(currentExePath()) + L"\\*";
     from.push_back(L'\0');                       // SHFileOperation wants double NUL
@@ -144,7 +144,7 @@ static bool install() {
     op.wFunc = FO_COPY;
     op.pFrom = from.c_str();
     op.pTo = to.c_str();
-    op.fFlags = FOF_NOCONFIRMATION | FOF_NOCONFIRMMKDIR | FOF_SIMPLEPROGRESS;
+    op.fFlags = FOF_NOCONFIRMATION | FOF_NOCONFIRMMKDIR | FOF_SIMPLEPROGRESS | (silent ? FOF_NOERRORUI : 0);
     op.lpszProgressTitle = L"BDON Immersive Home \uC124\uCE58 \uC911";   // 설치 중
     if (SHFileOperationW(&op) != 0 || op.fAnyOperationsAborted) {
         logLine("install: copy failed or cancelled");
@@ -193,8 +193,15 @@ bool offerInstall() {
     int answer = MessageBoxW(nullptr, text, kAppName, MB_YESNOCANCEL | MB_ICONQUESTION | MB_SETFOREGROUND);
     if (answer == IDCANCEL) return true;         // quit without running
     if (answer == IDNO) return false;            // run portable
-    if (install()) return true;
+    if (install(false)) return true;
     MessageBoxW(nullptr, L"\uC124\uCE58\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.", kAppName, MB_OK | MB_ICONWARNING);  // 설치하지 못했습니다.
+    return false;
+}
+
+bool installUpdateCopy() {
+    if (isInstalledCopy()) return false;
+    if (install(true)) return true;
+    launch(installedExe());      // copy failed: bring the old version back up
     return false;
 }
 

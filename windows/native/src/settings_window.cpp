@@ -26,6 +26,7 @@
 #include <string>
 #include <vector>
 
+#include "onp_update.h"
 #include "onp_settings.h"
 #include "onp_spot.h"
 
@@ -911,6 +912,40 @@ void paintAboutPane(Graphics& g, RECT client) {
     drawText(g, versionString().c_str(), (float)tx, (float)(y + 44), 13, rgb(255, 255, 255, 204), true);
     y += iconSize + 6 + 6;
 
+    // Update row (AboutView UpdateRow parity): one button + status text.
+    {
+        UpdateStatus u = updateStatus();
+        const int bw = 200, bh = 40;
+        bool busy = u.state == UpdateState::Checking || u.state == UpdateState::Downloading ||
+                    u.state == UpdateState::Installing;
+        std::string status;
+        switch (u.state) {
+            case UpdateState::Checking:    status = "\xED\x99\x95\xEC\x9D\xB8 \xEC\xA4\x91\xE2\x80\xA6"; break;   // 확인 중…
+            case UpdateState::UpToDate:    status = "\xEC\xB5\x9C\xEC\x8B\xA0 \xEB\xB2\x84\xEC\xA0\x84\xEC\x9E\x85\xEB\x8B\x88\xEB\x8B\xA4"; break;   // 최신 버전입니다
+            case UpdateState::Available:   status = "\xEC\x83\x88 \xEB\xB2\x84\xEC\xA0\x84 " + u.title; break;   // 새 버전 …
+            case UpdateState::Downloading: status = "\xEB\x82\xB4\xEB\xA0\xA4\xEB\xB0\x9B\xEB\x8A\x94 \xEC\xA4\x91 " + std::to_string(u.percent) + "%"; break;   // 내려받는 중 N%
+            case UpdateState::Installing:  status = "\xEC\x84\xA4\xEC\xB9\x98 \xEC\xA4\x91\xE2\x80\xA6"; break;   // 설치 중…
+            case UpdateState::Failed:      status = "\xEC\x97\x85\xEB\x8D\xB0\xEC\x9D\xB4\xED\x8A\xB8\xEB\xA5\xBC \xED\x99\x95\xEC\x9D\xB8\xED\x95\x98\xEC\xA7\x80 \xEB\xAA\xBB\xED\x96\x88\xEC\x8A\xB5\xEB\x8B\x88\xEB\x8B\xA4"; break;   // 업데이트를 확인하지 못했습니다
+            default: break;
+        }
+        bool install = u.state == UpdateState::Available;
+        const char* label = install ? "\xEC\x97\x85\xEB\x8D\xB0\xEC\x9D\xB4\xED\x8A\xB8 \xEC\x84\xA4\xEC\xB9\x98"    // 업데이트 설치
+                                    : "\xEC\x97\x85\xEB\x8D\xB0\xEC\x9D\xB4\xED\x8A\xB8 \xED\x99\x95\xEC\x9D\xB8";   // 업데이트 확인
+        int textX = x0;
+        if (!busy) {
+            GraphicsPath rr; roundRectPath(rr, (float)x0, (float)y, (float)bw, (float)bh, 4);
+            LinearGradientBrush fill(RectF((float)x0, y - 0.5f, (float)bw, bh + 1.0f), T::lavTop, T::lavBottom, LinearGradientModeVertical);
+            g.FillPath(&fill, &rr);
+            Pen edge(rgb(255, 255, 255, 230), 1); g.DrawPath(&edge, &rr);
+            drawText(g, label, (float)x0, (float)(y + (bh - 15) / 2), 15, T::ink, true, StringAlignmentCenter, bw);
+            addHit(x0, y, bw, bh, [install]() { if (install) installUpdate(); else checkForUpdate(); });
+            textX = x0 + bw + 16;
+        }
+        if (!status.empty())
+            drawText(g, status.c_str(), (float)textX, (float)(y + (bh - 13) / 2), 13, rgb(255, 255, 255, 217), true);
+        y += bh + 6 + 6;
+    }
+
     // Licence box (black 0.22, rounded 6).
     int boxPad = 14;
     int textW = contentW - boxPad * 2;
@@ -1077,6 +1112,10 @@ LRESULT CALLBACK settingsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 }
 
 } // namespace
+
+void refreshSettingsWindow() {
+    if (g_settingsHwnd) InvalidateRect(g_settingsHwnd, nullptr, FALSE);
+}
 
 void openSettingsWindow(HINSTANCE hinst) {
     g_hinst = hinst;
