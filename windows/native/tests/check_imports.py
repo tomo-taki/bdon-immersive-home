@@ -16,7 +16,7 @@ SYSTEM_DLLS = {
     "d3dcompiler_47.dll", "gdiplus.dll", "wtsapi32.dll", "psapi.dll",
     "msvcrt.dll", "api-ms-win-crt-",  # UCRT forwarders (prefix match)
     "ntdll.dll", "rpcrt4.dll", "combase.dll", "sechost.dll", "bcrypt.dll",
-    "version.dll", "winmm.dll", "imm32.dll", "powrprof.dll",
+    "version.dll", "winmm.dll", "imm32.dll", "powrprof.dll", "dwmapi.dll",
 }
 
 

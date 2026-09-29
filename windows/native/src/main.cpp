@@ -16,6 +16,7 @@
 #include <shellapi.h>
 #include <wtsapi32.h>
 #include <shlobj.h>
+#include <dwmapi.h>
 
 #include <algorithm>
 #include <atomic>
@@ -61,9 +62,13 @@ struct MonitorWindow {
     SwapTarget target;
     RECT rect{};
     float parallaxX = 0, parallaxY = 0;      // smoothed -1..1
+    bool covered = false;                     // a maximised / full-screen window hides it
 };
 
 static std::vector<MonitorWindow> g_windows;
+static bool g_needsFrame = true;             // draw once even if nothing moves
+static bool g_fullscreenApp = false;         // refreshed once a second
+static bool g_reducedRate = false;           // WARP or battery saver: 15 fps
 static NOTIFYICONDATAW g_tray = {};
 static bool g_trayAdded = false;
 static UINT g_taskbarCreated = 0;
@@ -145,6 +150,7 @@ static void swapInLoadedSpot() {
     if (g_hasReady.exchange(false)) {
         std::lock_guard<std::mutex> lock(g_stageMutex);
         g_stage = std::move(g_readyStage);
+        g_needsFrame = true;
         g_stage->setCharactersVisible(g_settings.showCharacters);
         g_stage->setHiddenMembers(hiddenMembersFor(g_stage->dir));
     }
@@ -322,6 +328,7 @@ static void createMonitorWindows(HINSTANCE hinst) {
         g_windows.push_back(std::move(mw));
     }
     logLine("created " + std::to_string(g_windows.size()) + " wallpaper window(s)");
+    g_needsFrame = true;
 }
 
 // ---- pause conditions (behaviour 4) ----
@@ -337,14 +344,74 @@ static bool fullscreenAppActive() {
 }
 
 static bool shouldPause() {
-    return g_sessionLocked.load() || fullscreenAppActive();
+    if (g_sessionLocked.load() || g_fullscreenApp) return true;
+    for (const auto& w : g_windows) if (!w.covered) return false;
+    return !g_windows.empty();   // every monitor hidden behind a window
+}
+
+static bool reducedRate() { return g_reducedRate; }
+
+// Monitors hidden by the foreground window: maximised over the work area, or
+// covering the whole monitor (borderless full screen, video players). Only
+// the foreground window is considered, which is cheap and never pauses a
+// monitor whose wallpaper actually shows.
+static void updateCoveredMonitors() {
+    HWND fg = GetForegroundWindow();
+    RECT frame{};
+    bool candidate = fg && IsWindowVisible(fg) && !IsIconic(fg);
+    if (candidate) {
+        std::string cls = className(fg);
+        candidate = cls != "Progman" && cls != "WorkerW" && cls != "Shell_TrayWnd" &&
+                    cls != "Shell_SecondaryTrayWnd" && cls != "BDONImmersiveHomeWnd";
+    }
+    if (candidate) {
+        BOOL cloaked = FALSE;   // on another virtual desktop, or a suspended UWP app
+        DwmGetWindowAttribute(fg, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
+        candidate = !cloaked &&
+                    SUCCEEDED(DwmGetWindowAttribute(fg, DWMWA_EXTENDED_FRAME_BOUNDS, &frame, sizeof(frame)));
+    }
+    auto contains = [](const RECT& outer, const RECT& inner) {
+        return outer.left <= inner.left && outer.top <= inner.top &&
+               outer.right >= inner.right && outer.bottom >= inner.bottom;
+    };
+    for (auto& w : g_windows) {
+        bool covered = false;
+        if (candidate) {
+            MONITORINFO mi = {sizeof(mi)};
+            HMONITOR mon = MonitorFromRect(&w.rect, MONITOR_DEFAULTTONEAREST);
+            if (GetMonitorInfoW(mon, &mi))
+                covered = contains(frame, mi.rcMonitor) || (IsZoomed(fg) && contains(frame, mi.rcWork));
+        }
+        if (w.covered != covered) {
+            w.covered = covered;
+            if (!covered) g_needsFrame = true;
+            logLine(std::string("monitor ") + std::to_string(w.rect.left) + "," + std::to_string(w.rect.top) +
+                    (covered ? " covered" : " visible"));
+        }
+    }
+}
+
+// Once a second: full-screen state, covered monitors, frame-rate budget.
+static void refreshPowerAndCover() {
+    bool fullscreen = fullscreenAppActive();
+    if (g_fullscreenApp && !fullscreen) g_needsFrame = true;
+    g_fullscreenApp = fullscreen;
+    updateCoveredMonitors();
+    SYSTEM_POWER_STATUS power{};
+    bool saver = GetSystemPowerStatus(&power) && power.SystemStatusFlag == 1;   // battery saver on
+    bool reduced = saver || g_ctx.driver != DriverKind::Hardware;
+    if (reduced != g_reducedRate) logLine(std::string("frame rate ") + (reduced ? "15" : "30") + " fps");
+    g_reducedRate = reduced;
 }
 
 // ---- cursor parallax (behaviour 4) ----
 
-static void updateParallax() {
+// Returns true while any window's smoothed camera is still moving, so a still
+// cursor lets the loop go idle (it used to re-render at 30 fps regardless).
+static bool updateParallax() {
     POINT cursor;
     GetCursorPos(&cursor);
+    bool moving = false;
     for (auto& w : g_windows) {
         int cx = (w.rect.left + w.rect.right) / 2;
         int cy = (w.rect.top + w.rect.bottom) / 2;
@@ -355,9 +422,12 @@ static void updateParallax() {
         float ty = halfH ? (float)(cy - cursor.y) / halfH : 0;
         tx = tx < -1 ? -1 : (tx > 1 ? 1 : tx);
         ty = ty < -1 ? -1 : (ty > 1 ? 1 : ty);
-        w.parallaxX += (tx - w.parallaxX) * 0.06f;
-        w.parallaxY += (ty - w.parallaxY) * 0.06f;
+        float dx = (tx - w.parallaxX) * 0.06f, dy = (ty - w.parallaxY) * 0.06f;
+        w.parallaxX += dx;
+        w.parallaxY += dy;
+        if (dx * dx + dy * dy > 1e-8f) moving = true;   // same 1e-4 step as SpotMetalView
     }
+    return moving;
 }
 
 // ---- tray ----
@@ -406,6 +476,7 @@ void onSettingsChanged() {
             g_stage->setHiddenMembers(hiddenMembersFor(g_stage->dir));
         }
     }
+    g_needsFrame = true;
 }
 
 static void applySpotChange() {
@@ -423,7 +494,7 @@ static void renderFrame(bool cameraMoving) {
     std::lock_guard<std::mutex> lock(g_stageMutex);
     if (!g_stage) return;
     for (auto& w : g_windows) {
-        if (!w.target.swap) continue;
+        if (!w.target.swap || w.covered) continue;
         auto cam = spotCamera(g_stage->data, (float)w.target.width, (float)w.target.height,
                               g_settings.cursorParallax ? w.parallaxX : 0,
                               g_settings.cursorParallax ? w.parallaxY : 0);
@@ -607,9 +678,11 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
                     logLine("window client " + std::to_string(client.right) + "x" + std::to_string(client.bottom) +
                             " != target " + std::to_string(w.target.width) + "x" + std::to_string(w.target.height) + "; resizing");
                     w.target.resize(g_ctx, client.right, client.bottom);
+                    g_needsFrame = true;
                 }
             }
             if (!g_trayAdded) addTray(main, hinst);
+            refreshPowerAndCover();
         }
 
         DWORD now = GetTickCount();
@@ -632,16 +705,20 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
         if (now - lastMemLog >= 5 * 60 * 1000) { lastMemLog = now; logMemoryTick(); }
 
         bool paused = shouldPause();
+        static bool wasPaused = false;
+        if (wasPaused && !paused) g_needsFrame = true;   // resume with a fresh frame
+        wasPaused = paused;
         bool cameraMoving = false;
         if (!paused) {
-            if (g_settings.cursorParallax) { updateParallax(); cameraMoving = true; }
+            if (g_settings.cursorParallax) cameraMoving = updateParallax();
             bool advanced = false;
             {
                 std::lock_guard<std::mutex> lock(g_stageMutex);
                 if (g_stage) advanced = g_stage->advance(delta, cameraMoving);
             }
-            if (advanced || cameraMoving) {
+            if (advanced || cameraMoving || g_needsFrame) {
                 idleFrames = 0;
+                g_needsFrame = false;
                 renderFrame(cameraMoving);
             } else {
                 idleFrames++;
@@ -649,8 +726,9 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
         }
         lastTick = now;
 
-        // Pace: 30 fps active, 5 fps idle/paused.
-        int targetMs = (paused || idleFrames > 30) ? 200 : 33;
+        // Pace: 30 fps active (15 on WARP / battery saver), 5 fps idle/paused.
+        int activeMs = reducedRate() ? 66 : 33;
+        int targetMs = (paused || idleFrames > 30) ? 200 : activeMs;
         Sleep(targetMs);
     }
 

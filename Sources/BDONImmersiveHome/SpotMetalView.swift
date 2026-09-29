@@ -78,6 +78,21 @@ func footprintMB() -> Int {
 /// setPointer / setPaused), so WallpaperController drives either the same way.
 final class SpotMetalView: MTKView, MTKViewDelegate {
     private static let framesPerSecond = 30
+    /// Low Power Mode or a hot machine: animate at half rate.
+    private static let reducedFramesPerSecond = 15
+    /// Rate while something moves.
+    static var activeFramesPerSecond: Int {
+        let info = ProcessInfo.processInfo
+        let constrained = info.isLowPowerModeEnabled || info.thermalState == .serious || info.thermalState == .critical
+        return constrained ? reducedFramesPerSecond : framesPerSecond
+    }
+
+    /// Power or thermal state changed: take the new active rate unless idle.
+    func powerStateChanged() {
+        if idleFrames < Self.idleFramesBeforeSlowing {
+            preferredFramesPerSecond = Self.activeFramesPerSecond
+        }
+    }
     /// Nothing animating and the camera still for this many frames: tick at
     /// `idleFramesPerSecond` (the clock still runs, so a replay wakes it).
     private static let idleFramesPerSecond = 5
@@ -137,7 +152,7 @@ final class SpotMetalView: MTKView, MTKViewDelegate {
         colorPixelFormat = .bgra8Unorm
         // Frames are sRGB, like the WebKit page: let the compositor colour-manage them.
         colorspace = CGColorSpace(name: CGColorSpace.sRGB)
-        preferredFramesPerSecond = Self.framesPerSecond
+        preferredFramesPerSecond = Self.activeFramesPerSecond
         delegate = self
         load(spot)
     }
@@ -199,8 +214,8 @@ final class SpotMetalView: MTKView, MTKViewDelegate {
     private func wake() {
         needsFrame = true
         idleFrames = 0
-        if preferredFramesPerSecond != Self.framesPerSecond {
-            preferredFramesPerSecond = Self.framesPerSecond
+        if preferredFramesPerSecond != Self.activeFramesPerSecond {
+            preferredFramesPerSecond = Self.activeFramesPerSecond
         }
     }
 
@@ -268,8 +283,8 @@ final class SpotMetalView: MTKView, MTKViewDelegate {
             return
         }
         idleFrames = 0
-        if preferredFramesPerSecond != Self.framesPerSecond {
-            preferredFramesPerSecond = Self.framesPerSecond
+        if preferredFramesPerSecond != Self.activeFramesPerSecond {
+            preferredFramesPerSecond = Self.activeFramesPerSecond
         }
 
         guard let drawable = currentDrawable, let buffer = renderer.queue.makeCommandBuffer() else { return }

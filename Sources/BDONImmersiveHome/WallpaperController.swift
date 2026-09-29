@@ -28,6 +28,7 @@ final class WallpaperController {
         pointerTimer = Timer.scheduledTimer(withTimeInterval: Self.pointerInterval, repeats: true) {
             [weak self] _ in self?.updatePointer()
         }
+        startCoverCheck()
         MemoryProbe.start { [weak self] in self?.views ?? [] }
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
             MemoryProbe.log(self?.views ?? [])
@@ -189,6 +190,7 @@ final class WallpaperController {
         view.onReady = { [weak self, weak window, weak view] status in
             EventLog.write("page ready on display \(Self.displayId(screen)): \(status.prefix(300))")
             window?.alphaValue = 1
+            self?.applyPause()
             if let view {
                 self?.syncPage(view)
             }
@@ -269,6 +271,13 @@ final class WallpaperController {
     // MARK: - System events
 
     private func observeSystem() {
+        // Low Power Mode / thermal pressure change the animation rate.
+        for name in [Notification.Name.NSProcessInfoPowerStateDidChange, ProcessInfo.thermalStateDidChangeNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                EventLog.write("active rate \(SpotMetalView.activeFramesPerSecond) fps")
+                self?.views.forEach { $0.powerStateChanged() }
+            }
+        }
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in self?.scheduleRebuild() }
@@ -325,8 +334,56 @@ final class WallpaperController {
     }
 
     private func applyPause() {
-        let paused = systemPaused
-        views.forEach { $0.setPaused(paused) }
+        for (window, view) in zip(windows, views) {
+            let covered = window.screen.map { coveredDisplays.contains(Self.displayId($0)) } ?? false
+            let paused = systemPaused || covered
+            if view.isPaused != paused {
+                view.setPaused(paused)
+            }
+        }
+    }
+
+    // MARK: - Covered displays
+
+    /// Displays hidden behind another app's window that fills the whole
+    /// screen (a full-screen app, a video or game window). Nothing of the
+    /// wallpaper shows there, so its view stops drawing.
+    private var coveredDisplays = Set<CGDirectDisplayID>()
+    private var coverTimer: Timer?
+
+    private func startCoverCheck() {
+        coverTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.updateCoveredDisplays()
+        }
+    }
+
+    private func updateCoveredDisplays() {
+        let covered = Self.displaysCoveredByWindows(screenIds)
+        guard covered != coveredDisplays else { return }
+        coveredDisplays = covered
+        EventLog.write("covered displays \(covered.sorted())")
+        applyPause()
+    }
+
+    /// Which of `displays` have an on-screen, normal-level window of another
+    /// process covering their full bounds. Pure over the window list, so it
+    /// is testable (`--cover-check`).
+    static func displaysCoveredByWindows(_ displays: [CGDirectDisplayID]) -> Set<CGDirectDisplayID> {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return [] }
+        let me = ProcessInfo.processInfo.processIdentifier
+        let rects: [CGRect] = list.compactMap { info in
+            guard (info[kCGWindowLayer as String] as? Int) == 0,
+                  (info[kCGWindowOwnerPID as String] as? Int32) != me,
+                  ((info[kCGWindowAlpha as String] as? Double) ?? 1) > 0.9,
+                  let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: bounds) else { return nil }
+            return rect
+        }
+        return Set(displays.filter { id in
+            let screen = CGDisplayBounds(id)
+            return rects.contains { $0.contains(screen) }
+        })
     }
 
     // MARK: - Pointer
