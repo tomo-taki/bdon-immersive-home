@@ -171,8 +171,7 @@ struct SubTabRow: View {
 struct OptionPill<Detail: View>: View {
     private static var headerHeight: CGFloat { 64 }
     private static var radius: CGFloat { headerHeight / 2 }
-    /// How far the opened panel reaches out around the header capsule.
-    private static var panelLip: CGFloat { 7 }
+
 
     let title: String
     let value: String
@@ -198,9 +197,9 @@ struct OptionPill<Detail: View>: View {
 
     private var capsule: RoundedRectangle { RoundedRectangle(cornerRadius: Self.radius, style: .circular) }
 
-    /// Header capsule keeps its own fill whether open or not. Opening lays a
-    /// separately coloured panel under it that wraps up around the capsule;
-    /// the capsule is cut out of the panel so the two never mix, and the
+    /// Header capsule keeps its own fill whether open or not. Opening drops a
+    /// separately coloured panel whose top edge is the capsule's lower
+    /// contour itself: flush against the capsule, never over it, and the
     /// capsule border is dropped so no line separates them.
     var body: some View {
         VStack(spacing: 0) {
@@ -223,7 +222,7 @@ struct OptionPill<Detail: View>: View {
         }
         .background {
             if expanded {
-                DropPanel(headerHeight: Self.headerHeight, radius: Self.radius, lip: Self.panelLip)
+                DropPanel(headerHeight: Self.headerHeight, radius: Self.radius)
                     .fill(Theme.pillOpen)
             }
         }
@@ -256,28 +255,25 @@ struct OptionPill<Detail: View>: View {
     }
 }
 
-/// Opened-pill panel: a rounded rectangle grown by `lip` on the top and
-/// sides, so it wraps up around the header capsule, minus the capsule itself
-/// (shrunk half a point so the antialiased edges overlap instead of leaving
-/// a seam).
+/// Opened-pill panel: from the header's vertical middle down, square on top
+/// and rounded with the pill radius at the bottom, minus the header capsule.
+/// What is left starts exactly on the capsule's lower contour and fills the
+/// corners beside it up to the capsule's widest point.
 ///
-///  ╭────────────────────────────────────╮
-///  │ ╭──────── header capsule ────────╮ │
-///  │ ╰────────────────────────────────╯ │
-///  │        OFF        ON               │
-///  ╰────────────────────────────────────╯
+///   ╭──────── header capsule ────────╮
+///  ▕╰────────────────────────────────╯▏  <- panel top = capsule contour
+///  ▕        OFF        ON             ▏
+///   ╰─────────────────────────────────╯
 private struct DropPanel: Shape {
     let headerHeight: CGFloat
     let radius: CGFloat
-    let lip: CGFloat
 
     func path(in rect: CGRect) -> Path {
-        let body = Path(roundedRect: CGRect(x: rect.minX - lip, y: rect.minY - lip,
-                                            width: rect.width + lip * 2, height: rect.height + lip),
-                        cornerRadius: radius + lip, style: .circular)
-        let header = Path(roundedRect: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: headerHeight)
-                            .insetBy(dx: 0.5, dy: 0.5),
-                          cornerRadius: radius - 0.5, style: .circular)
+        let top = headerHeight / 2
+        let body = UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius, style: .circular)
+            .path(in: CGRect(x: rect.minX, y: rect.minY + top, width: rect.width, height: rect.height - top))
+        let header = Path(roundedRect: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: headerHeight),
+                          cornerRadius: radius, style: .circular)
         return body.subtracting(header)
     }
 }
