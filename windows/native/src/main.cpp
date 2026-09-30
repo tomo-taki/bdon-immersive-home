@@ -263,8 +263,10 @@ static void attachToDesktop(HWND hwnd, const RECT& r) {
     ScreenToClient(host.parent, &origin);
     SetWindowPos(hwnd, host.defView ? host.defView : HWND_BOTTOM, origin.x, origin.y, w, h, SWP_NOACTIVATE);
     if (host.wallpaper) {
-        // Keep Progman's static wallpaper under us.
-        SetWindowPos(host.wallpaper, hwnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        // Keep Progman's static wallpaper under ALL our windows. Placing it
+        // just below this one put it above the monitors attached earlier,
+        // hiding every wallpaper but the last on multi-monitor setups.
+        SetWindowPos(host.wallpaper, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 }
 

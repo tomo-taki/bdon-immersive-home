@@ -51,6 +51,31 @@ struct SpotCamera {
     float fieldOfView = 19.0f;
 };
 
+// Edge-coverage zoom per aspect (cover.json, Coverage.swift `--coverage`).
+// Empty = no zoom.
+struct CoverTable {
+    std::vector<float> aspects;
+    std::vector<float> zoom;
+
+    // The smaller of the two bracketing samples (never less zoom than a neighbour).
+    float zoomFor(float aspect) const {
+        if (aspects.empty() || aspects.size() != zoom.size()) {
+            return 1.0f;
+        }
+        if (aspect <= aspects.front()) {
+            return zoom.front();
+        }
+        if (aspect >= aspects.back()) {
+            return zoom.back();
+        }
+        size_t upper = 1;
+        while (aspects[upper] < aspect) {
+            ++upper;
+        }
+        return std::fmin(zoom[upper - 1], zoom[upper]);
+    }
+};
+
 struct SpotData {
     std::string name;
     SpotSituation situation;
@@ -58,6 +83,7 @@ struct SpotData {
     UnityTransform roomRoot;
     std::vector<bool> roomNodes;
     std::vector<SpotCharacter> characters;
+    CoverTable cover;
 };
 
 // ---- JSON helpers ----
@@ -122,6 +148,22 @@ inline SpotData parseSpotData(const json& j) {
 
 inline SpotData loadSpotData(const std::string& spotJsonPath) {
     return parseSpotData(json::parse(readFile(spotJsonPath)));
+}
+
+// cover.json next to spot.json; a missing or malformed file means no zoom.
+inline CoverTable loadCoverTable(const std::string& coverJsonPath) {
+    CoverTable t;
+    std::string text = readFile(coverJsonPath);
+    if (text.empty()) {
+        return t;
+    }
+    json j = json::parse(text, nullptr, false);
+    if (j.is_discarded()) {
+        return t;
+    }
+    for (const auto& a : j.value("aspects", json::array())) t.aspects.push_back(a.get<float>());
+    for (const auto& z : j.value("zoom", json::array())) t.zoom.push_back(z.get<float>());
+    return t;
 }
 
 // ---- roomMatrix (Spot.swift) ----
@@ -200,6 +242,9 @@ inline CameraMatrices spotCamera(const SpotData& data, float width, float height
     float fov = fitFov(s, width, height);
     SpotPose base = defaultPose(s, fov);
     float aspect = width / height;
+    // Zoom in just enough that the frame edge never runs past the room. Only
+    // the lens narrows: the cursor turn range stays the unzoomed one.
+    float zoomedFov = 2.0f * std::atan(std::tan(fov * kDeg / 2.0f) * data.cover.zoomFor(aspect)) / kDeg;
     auto viewOf = [](const SpotPose& p) {
         Vec3 eye = rightHanded(p.position);
         Vec3 dir = rightHanded(lookDirection(p));
@@ -208,9 +253,9 @@ inline CameraMatrices spotCamera(const SpotData& data, float width, float height
 
     CameraMatrices out;
     out.view = viewOf(shiftedPose(base, px, py, s, aspect));
-    out.projection = perspective(fov, aspect, data.camera.nearZ, data.camera.farZ);
+    out.projection = perspective(zoomedFov, aspect, data.camera.nearZ, data.camera.farZ);
     out.sortViewProjection = out.projection * viewOf(shiftedPose(base, 0, 0, s, aspect));
-    out.fov = fov;
+    out.fov = zoomedFov;
     return out;
 }
 

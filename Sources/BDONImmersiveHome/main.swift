@@ -26,6 +26,27 @@ if let flag = args.firstIndex(of: "--bench"), flag + 3 < args.count, let spot = 
     exit(Snapshot.bench(spot: spot, width: width, height: height, frames: frames) ? 0 : 1)
 }
 
+// `--sync-test <spotId>...` checks cross-display choreography sync (QA).
+if let flag = args.firstIndex(of: "--sync-test") {
+    let ids = args.dropFirst(flag + 1)
+    let spots = ids.isEmpty ? SpotCatalog.spots : ids.compactMap { SpotCatalog.spot(id: $0) }
+    exit(Snapshot.syncTest(spots: spots) ? 0 : 1)
+}
+
+// `--still-test <spotId>...` checks the early lock-screen still (QA).
+if let flag = args.firstIndex(of: "--still-test") {
+    let ids = args.dropFirst(flag + 1)
+    let spots = ids.isEmpty ? SpotCatalog.spots : ids.compactMap { SpotCatalog.spot(id: $0) }
+    exit(Snapshot.stillTest(spots: spots) ? 0 : 1)
+}
+
+// `--coverage <spotId>...` writes each Spot's cover.json (edge zoom per aspect).
+if let flag = args.firstIndex(of: "--coverage") {
+    let ids = args.dropFirst(flag + 1)
+    let spots = ids.isEmpty ? SpotCatalog.spots : ids.compactMap { SpotCatalog.spot(id: $0) }
+    exit(Snapshot.coverage(spots: spots) ? 0 : 1)
+}
+
 // `--settings-snapshot <out.png>` renders the settings window offscreen and exits (QA).
 // SETTINGS_TAB=배경|상세|정보, SETTINGS_SECTION=표시|셔플 picks the tab, SETTINGS_OPEN=characters|interval|...
 // opens that option pill. `--about-snapshot <out.png>` is the 정보 tab.

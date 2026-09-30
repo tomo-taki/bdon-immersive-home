@@ -119,6 +119,7 @@ static Resident makeResident(const SpotCharacter& ch, SBDrawable* drawable, cons
 Stage::Stage(D3DContext& c, const std::string& spotsDir, const std::string& dir) : dir(dir) {
     std::string spotDir = spotsDir + "/" + dir;
     data = loadSpotData(spotDir + "/spot.json");
+    data.cover = loadCoverTable(spotDir + "/cover.json");
 
     std::string roomFolder = dir.substr(0, dir.find('/'));
     std::string glb = spotsDir + "/" + roomFolder + "/room.glb";

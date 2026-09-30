@@ -189,8 +189,15 @@ final class SpotRenderer {
     /// Draw `stage` seen through `camera` into `target` (a drawable or an offscreen texture).
     /// `sortViewProjection` orders the transparent layers (the camera without
     /// cursor parallax; defaults to the drawn camera).
+    /// What shows where no room surface is drawn. `.flat` skips the sky so
+    /// coverage probes can tell uncovered pixels apart (Coverage.swift).
+    enum Backdrop {
+        case sky
+        case flat(MTLClearColor)
+    }
+
     func draw(stage: SpotStage, view: Mat4, projection: Mat4, sortViewProjection: Mat4? = nil, charactersVisible: Bool,
-              into target: MTLTexture, commandBuffer: MTLCommandBuffer) {
+              backdrop: Backdrop = .sky, into target: MTLTexture, commandBuffer: MTLCommandBuffer) {
         _ = ensureTargets(outputWidth: target.width, outputHeight: target.height)
         let viewProjection = projection * view
         let sortViewProjection = sortViewProjection ?? viewProjection
@@ -199,7 +206,11 @@ final class SpotRenderer {
         pass.colorAttachments[0].texture = colorMSAA
         pass.colorAttachments[0].resolveTexture = resolved
         pass.colorAttachments[0].loadAction = .clear
-        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        var clear = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        if case .flat(let color) = backdrop {
+            clear = color
+        }
+        pass.colorAttachments[0].clearColor = clear
         pass.colorAttachments[0].storeAction = .multisampleResolve
         pass.depthAttachment.texture = depthMSAA
         pass.depthAttachment.loadAction = .clear
@@ -208,9 +219,11 @@ final class SpotRenderer {
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
 
         // 1. Sky.
-        encoder.setRenderPipelineState(sky)
-        encoder.setDepthStencilState(noDepth)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        if case .sky = backdrop {
+            encoder.setRenderPipelineState(sky)
+            encoder.setDepthStencilState(noDepth)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        }
 
         // 2. Opaque room.
         var uniforms = Uniforms(viewProjection: viewProjection, model: matrix_identity_float4x4)

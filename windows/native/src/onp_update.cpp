@@ -210,8 +210,15 @@ void doCheck() {
             if (name == kPackage) package = a.value("browser_download_url", "");
             if (name == kChecksums) checksums = a.value("browser_download_url", "");
         }
-        if (build <= BDON_BUILD_NUMBER || package.empty() || checksums.empty()) {
+        if (build <= BDON_BUILD_NUMBER) {
             setStatus(UpdateState::UpToDate);
+            return;
+        }
+
+        // A newer release without our file (e.g. renamed asset) is not "up to date".
+        if (package.empty() || checksums.empty()) {
+            logLine("update " + tag + " has no " + kPackage);
+            setStatus(UpdateState::MissingPackage);
             return;
         }
         std::string title = j.value("name", tag);

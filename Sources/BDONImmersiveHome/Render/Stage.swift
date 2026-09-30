@@ -128,6 +128,8 @@ final class SpotStage {
     private static let settle: Double = 3
 
     let data: SpotData
+    /// Edge-coverage zoom per aspect (cover.json); nil = no zoom.
+    let cover: CoverTable?
     let room: Room
     let roomVertices: MTLBuffer
     let roomIndices: MTLBuffer
@@ -135,8 +137,21 @@ final class SpotStage {
     private var atlases: [String: OpaquePointer] = [:]
 
     private(set) var clock: Double = 0
+    /// Seconds since the choreography last (re)started: what another
+    /// display's stage fast-forwards to so both show the same moment.
+    private(set) var playTime: Double = 0
+    /// A follower never picks its own replay time; its leader calls replayNow().
+    var follows = false {
+        didSet { if oldValue, !follows { scheduleReplayIfIdle() } }
+    }
+    /// The choreography restarted (only the leader's matters).
+    var onReplay: (() -> Void)?
     private var replayAt = Double.infinity
     private var settleUntil = SpotStage.settle
+    /// Clock of the last frame a clip was playing (or the choreography restarted).
+    private var lastActive: Double = 0
+    /// Seconds since the last clip stopped (0 while one plays).
+    var quietFor: Double { clock - lastActive }
     var charactersVisible = true { didSet { applyVisibility() } }
     /// Easter egg: members to leave out (e.g. ["anon", "soyo"]). A resident that
     /// is only hidden members disappears; one shared with a shown member
@@ -146,6 +161,8 @@ final class SpotStage {
     init(spotsDir: URL, dir: String, device: MTLDevice) throws {
         let spotDir = spotsDir.appendingPathComponent(dir)
         data = try JSONDecoder().decode(SpotData.self, from: Data(contentsOf: spotDir.appendingPathComponent("spot.json")))
+        // QA: BDON_NOCOVER=1 ignores cover.json (measuring, before/after shots).
+        cover = ProcessInfo.processInfo.environment["BDON_NOCOVER"] == "1" ? nil : CoverTable.load(spotDir: spotDir)
 
         let roomURL = spotsDir.appendingPathComponent(dir.components(separatedBy: "/")[0]).appendingPathComponent("room.glb")
         room = try loadRoom(url: roomURL, root: roomMatrix(data), visible: data.roomNodes, device: device)
@@ -184,6 +201,7 @@ final class SpotStage {
 
     private func applyVisibility() {
         settleUntil = clock + Self.settle
+        lastActive = clock
         for resident in residents {
             // Blanked slots only get an attachment back from a keyed animation,
             // so restore the setup pose; the next update re-applies the clip.
@@ -220,9 +238,12 @@ final class SpotStage {
     /// Advance animations; false when nothing changed (the frame can be skipped).
     func advance(_ delta: Double, cameraMoving: Bool) -> Bool {
         clock += delta
+        playTime += delta
         let replay = clock >= replayAt
         if replay {
             replayAt = .infinity
+            playTime = 0
+            onReplay?()
         }
 
         var animating = false
@@ -236,6 +257,7 @@ final class SpotStage {
         }
         if animating || replay {
             settleUntil = clock + Self.settle
+            lastActive = clock
         }
         guard cameraMoving || clock <= settleUntil else { return false }
 
@@ -247,9 +269,42 @@ final class SpotStage {
             }
         }
         // The residents' clips are one choreography: one replay time for all.
-        if completed, replayAt == .infinity, !residents.contains(where: { $0.character.loop }) {
-            replayAt = clock + Double.random(in: Self.replayMin ... Self.replayMax)
+        if completed {
+            scheduleReplayIfIdle()
         }
         return true
+    }
+
+    /// Restart the choreography on the next advance (a follower copying its leader).
+    func replayNow() {
+        replayAt = clock
+    }
+
+    /// Catch up with a stage that has played `target` seconds, in frame-sized
+    /// steps so clip completions and settling behave as if it had been running.
+    func fastForward(to target: Double) {
+        let step = 1.0 / 30
+        while playTime + step <= target {
+            // Settled: the leader stopped posing too, so only the clock moves.
+            guard advance(step, cameraMoving: false) else {
+                let rest = target - playTime
+                clock += rest
+                playTime += rest
+                return
+            }
+            // Still animating after a minute (a looping clip): one jump, which
+            // wraps by itself, instead of steps for every second it looped.
+            if playTime >= Self.fastForwardStepped, target > playTime {
+                _ = advance(target - playTime, cameraMoving: true)
+                return
+            }
+        }
+    }
+    private static let fastForwardStepped: Double = 60
+
+    /// The residents' clips are one choreography: one replay time for all.
+    private func scheduleReplayIfIdle() {
+        guard !follows, replayAt == .infinity, !residents.contains(where: { $0.character.loop }) else { return }
+        replayAt = clock + Double.random(in: Self.replayMin ... Self.replayMax)
     }
 }

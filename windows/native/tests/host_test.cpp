@@ -84,6 +84,23 @@ int main(int argc, char** argv) {
     if (ref.contains("projection"))
         checkMatrix("projection matrix", cam.projection, ref["projection"].get<std::vector<float>>(), 2e-5);
 
+    // 4. cover.json zoom: bracketing minimum, clamped at the ends, and the
+    //    projection narrows by exactly that factor (tan(fov/2) * zoom).
+    CoverTable cover;
+    cover.aspects = {1.0f, 1.5f, 2.0f};
+    cover.zoom = {0.8f, 0.9f, 1.0f};
+    checkFloat("cover below range", cover.zoomFor(0.5f), 0.8, 1e-6);
+    checkFloat("cover between samples", cover.zoomFor(1.7f), 0.9, 1e-6);
+    checkFloat("cover on a sample", cover.zoomFor(1.5f), 0.8, 1e-6);
+    checkFloat("cover above range", cover.zoomFor(3.0f), 1.0, 1e-6);
+    SpotData zoomed = data;
+    zoomed.cover = cover;
+    CameraMatrices zc = spotCamera(zoomed, 1200.0f, 1000.0f, 0, 0);   // aspect 1.2 -> 0.8
+    CameraMatrices uc = spotCamera(data, 1200.0f, 1000.0f, 0, 0);
+    checkFloat("zoomed projection y", zc.projection.c[1].y, uc.projection.c[1].y / 0.8, 1e-4);
+    checkMatrix("zoom keeps view", zc.view,
+                std::vector<float>(&uc.view.c[0].x, &uc.view.c[0].x + 16), 1e-6);
+
     std::printf("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL PASS" : "FAILURES",
                 g_failures, g_failures == 1 ? "" : "s");
     return g_failures == 0 ? 0 : 1;

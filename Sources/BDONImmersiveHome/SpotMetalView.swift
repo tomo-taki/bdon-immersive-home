@@ -21,11 +21,17 @@ enum MetalContext {
 /// `sort` is the view-projection of the same camera with no parallax: the
 /// renderer orders transparent layers by it, so turning the camera with the
 /// cursor never reorders them.
-func spotCamera(for stage: SpotStage, width: Float, height: Float, pointer: SIMD2<Float>) -> (view: Mat4, projection: Mat4, sort: Mat4) {
+func spotCamera(for stage: SpotStage, width: Float, height: Float, pointer: SIMD2<Float>,
+                zoom: Float? = nil) -> (view: Mat4, projection: Mat4, sort: Mat4) {
     let s = stage.data.situation
     let aspect = width / max(height, 1)
+    // Zoom in just enough that the frame edge never runs past the room
+    // (Coverage.swift). Only the lens narrows: the cursor turn range stays
+    // the one the unzoomed view allows, so zooming never turns further.
+    let scale = zoom ?? stage.cover?.zoom(for: aspect) ?? 1
     let base = defaultPose(s, fov: fitFov(s, width: width, height: height))
-    let projection = perspective(fovY: base.fov, aspect: aspect, near: stage.data.camera.near, far: stage.data.camera.far)
+    let fovY = 2 * atan(tan(base.fov * degrees / 2) * scale) / degrees
+    let projection = perspective(fovY: fovY, aspect: aspect, near: stage.data.camera.near, far: stage.data.camera.far)
     func view(_ pose: SpotPose) -> Mat4 {
         let eye = rightHanded(pose.position)
         let target = rightHanded(pose.position + lookDirection(pose))
@@ -33,22 +39,21 @@ func spotCamera(for stage: SpotStage, width: Float, height: Float, pointer: SIMD
     }
     let pose = shiftedPose(base, px: pointer.x, py: pointer.y, s, aspect: aspect)
     let still = shiftedPose(base, px: 0, py: 0, s, aspect: aspect)
-    return (view(pose),
-            perspective(fovY: pose.fov, aspect: aspect, near: stage.data.camera.near, far: stage.data.camera.far),
-            projection * view(still))
+    return (view(pose), projection, projection * view(still))
 }
 
 /// Render one frame of `stage` offscreen and read it back as an sRGB image.
 func renderStill(_ stage: SpotStage, renderer: SpotRenderer, width: Int, height: Int,
-                 pointer: SIMD2<Float> = .zero) -> CGImage? {
+                 pointer: SIMD2<Float> = .zero, zoom: Float? = nil, characters: Bool = true,
+                 backdrop: SpotRenderer.Backdrop = .sky) -> CGImage? {
     let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: max(width, 1), height: max(height, 1), mipmapped: false)
     d.usage = [.renderTarget, .shaderRead]
     d.storageMode = .managed
     guard width > 0, height > 0, let target = renderer.device.makeTexture(descriptor: d),
           let buffer = renderer.queue.makeCommandBuffer() else { return nil }
-    let camera = spotCamera(for: stage, width: Float(width), height: Float(height), pointer: pointer)
-    renderer.draw(stage: stage, view: camera.view, projection: camera.projection, sortViewProjection: camera.sort, charactersVisible: true,
-                  into: target, commandBuffer: buffer)
+    let camera = spotCamera(for: stage, width: Float(width), height: Float(height), pointer: pointer, zoom: zoom)
+    renderer.draw(stage: stage, view: camera.view, projection: camera.projection, sortViewProjection: camera.sort, charactersVisible: characters,
+                  backdrop: backdrop, into: target, commandBuffer: buffer)
     guard let blit = buffer.makeBlitCommandEncoder() else { return nil }
     blit.synchronize(resource: target)
     blit.endEncoding()
@@ -106,6 +111,9 @@ final class SpotMetalView: MTKView, MTKViewDelegate {
     /// moment for a still (LockScreenWallpaper). Once per change.
     var onSettled: ((SpotMetalView) -> Void)?
     private var settleReported = true
+    /// Seconds after the last clip stops before the still is taken (lets
+    /// Spine physics such as hair come to rest; `--still-test` checks it).
+    static let stillDelay: Double = 1.5
 
     /// The Spot on screen, drawn once more from the default camera.
     func captureStill() -> CGImage? {
@@ -153,8 +161,36 @@ final class SpotMetalView: MTKView, MTKViewDelegate {
         // Frames are sRGB, like the WebKit page: let the compositor colour-manage them.
         colorspace = CGColorSpace(name: CGColorSpace.sRGB)
         preferredFramesPerSecond = Self.activeFramesPerSecond
+        // MTKView's own drawable resizing leaves a Sidecar (AirPlay) display
+        // black although frames are presented: size the drawable ourselves.
+        autoResizeDrawable = false
         delegate = self
         load(spot)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        syncDrawableSize()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        syncDrawableSize()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        syncDrawableSize()
+    }
+
+    /// Drawable = bounds in backing pixels of the window's current screen.
+    private func syncDrawableSize() {
+        guard let window else { return }
+        let scale = window.backingScaleFactor
+        let size = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
+        guard size.width > 0, size.height > 0, size != drawableSize else { return }
+        drawableSize = size
+        mtkView(self, drawableSizeWillChange: size)
     }
 
     required init(coder: NSCoder) {
@@ -211,6 +247,32 @@ final class SpotMetalView: MTKView, MTKViewDelegate {
         load(wanted)
     }
 
+    // MARK: - Sync across displays
+
+    /// A new Spot finished loading on this view.
+    var onStageLoaded: ((SpotMetalView) -> Void)?
+    /// This view's choreography restarted.
+    var onReplay: ((SpotMetalView) -> Void)?
+
+    /// Lead (nil) or follow `leader`: a follower showing the same Spot jumps
+    /// to the leader's moment and replays only when the leader does.
+    func follow(_ leader: SpotMetalView?) {
+        guard let stage else { return }
+        stage.follows = leader != nil
+        guard let leaderStage = leader?.stage, leader?.stageDir == stageDir,
+              leaderStage.playTime > stage.playTime else { return }
+        stage.fastForward(to: leaderStage.playTime)
+        EventLog.write(String(format: "synced to leader at %.2fs", leaderStage.playTime))
+        wake()
+    }
+
+    /// The leader replayed: do the same if showing the same Spot.
+    func replay(with leader: SpotMetalView) {
+        guard leader.stageDir == stageDir else { return }
+        stage?.replayNow()
+        wake()
+    }
+
     private func wake() {
         needsFrame = true
         idleFrames = 0
@@ -234,12 +296,17 @@ final class SpotMetalView: MTKView, MTKViewDelegate {
                 case .success(let next):
                     next.charactersVisible = self.characters
                     next.hiddenMembers = self.hiddenMembers
+                    next.onReplay = { [weak self] in
+                        guard let self else { return }
+                        self.onReplay?(self)
+                    }
                     self.stage = next
                     self.stageDir = spot.dir
                     self.loadedAt = Date()
                     self.settleReported = false
                     EventLog.write(String(format: "spot %@ loaded in %.2fs, footprint %dMB",
                                           spot.id, Date().timeIntervalSince(started), footprintMB()))
+                    self.onStageLoaded?(self)
                     self.wake()
                 case .failure(let error):
                     EventLog.write("spot \(spot.dir) failed: \(error)")
@@ -271,14 +338,16 @@ final class SpotMetalView: MTKView, MTKViewDelegate {
         smooth += (pointer - smooth) * 0.06
         let moving = simd_length(smooth - previous) > 1e-4
         let changed = stage.advance(delta, cameraMoving: moving)
+        // Lock-screen still: as soon as the clips have stopped, whether or
+        // not the cursor is moving (the still uses the default camera).
+        if !settleReported, stage.quietFor >= Self.stillDelay {
+            settleReported = true
+            onSettled?(self)
+        }
         guard changed || moving || needsFrame else {
             idleFrames += 1
             if idleFrames == Self.idleFramesBeforeSlowing {
                 preferredFramesPerSecond = Self.idleFramesPerSecond
-                if !settleReported {
-                    settleReported = true
-                    onSettled?(self)
-                }
             }
             return
         }

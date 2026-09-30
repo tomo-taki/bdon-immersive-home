@@ -7,7 +7,7 @@ import AppKit
 /// per display and put back when the option is turned off.
 enum LockScreenWallpaper {
     private static let originalsKey = "lockScreenOriginals"
-    private static let queue = DispatchQueue(label: "bdon.lockscreen", qos: .utility)
+    private static let queue = DispatchQueue(label: "bdon.lockscreen", qos: .userInitiated)
 
     static let directory: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

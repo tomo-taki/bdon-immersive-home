@@ -12,7 +12,7 @@
 
 namespace onp {
 
-enum class UpdateState { Idle, Checking, UpToDate, Available, Downloading, Installing, Failed };
+enum class UpdateState { Idle, Checking, UpToDate, Available, Downloading, Installing, Failed, MissingPackage };
 
 struct UpdateStatus {
     UpdateState state = UpdateState::Idle;

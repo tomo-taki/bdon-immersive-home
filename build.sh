@@ -22,6 +22,15 @@ fi
 # over vendor/spine-runtimes spine-c 4.2).
 swift build -c release --disable-sandbox
 
+# Edge zoom per Spot (cover.json), measured by the app itself: new Spots, or
+# all of them with RECOVER=1 after a renderer or camera change.
+missing="$(for d in Resources/web/spots/*/*/; do [ -f "$d/cover.json" ] || basename "$d"; done)"
+if [ "${RECOVER:-0}" = 1 ]; then
+    .build/release/BDONImmersiveHome --coverage
+elif [ -n "$missing" ]; then
+    # shellcheck disable=SC2086
+    .build/release/BDONImmersiveHome --coverage $missing
+fi
 # Settings thumbnails (with and without characters), rendered by the app itself.
 if [ ! -f Resources/web/thumbs/30001_bg.jpg ] || [ "${REBUILD_THUMBS:-0}" = 1 ]; then
     tools/thumbs.sh .build/release/BDONImmersiveHome

@@ -156,17 +156,51 @@ final class WallpaperController {
             keptIds.append(id)
         }
 
-        // Displays that are gone.
+        // Displays that are gone: close so the window, view and stage are freed.
         for (index, id) in screenIds.enumerated() where !currentIds.contains(id) {
             views[index].setRunning(false)
-            windows[index].orderOut(nil)
+            windows[index].close()
         }
 
         windows = keptWindows
         views = keptViews
         screenIds = keptIds
         lastPointer = keptPointer
+        assignLeader()
         applyPause()
+    }
+
+    // MARK: - Sync across displays
+
+    /// The main display (menu bar, NSScreen.screens[0]) leads the choreography.
+    private var leader: SpotMetalView? { views.first }
+
+    /// Roles may change when the main display is replaced.
+    private func assignLeader() {
+        for view in views {
+            view.follow(view === leader ? nil : leader)
+        }
+    }
+
+    private func stageLoaded(_ view: SpotMetalView) {
+        guard view === leader else {
+            view.follow(leader)
+            return
+        }
+        // A Spot change on the leader: restart followers already showing it,
+        // so every display starts the new Spot together.
+        view.follow(nil)
+        for other in views where other !== view {
+            other.replay(with: view)
+        }
+    }
+
+    private func leaderReplayed(_ view: SpotMetalView) {
+        guard view === leader else { return }
+        EventLog.write("leader replayed, followers \(views.count - 1)")
+        for other in views where other !== view {
+            other.replay(with: view)
+        }
     }
 
     /// A new display's window stays invisible until its view draws the Spot,
@@ -186,6 +220,8 @@ final class WallpaperController {
                                        spot: spot, characters: settings.showCharacters,
                                        hidden: settings.easterEgg.hiddenMembers(in: spot)) else { return nil }
         view.autoresizingMask = [.width, .height]
+        view.onStageLoaded = { [weak self] view in self?.stageLoaded(view) }
+        view.onReplay = { [weak self] view in self?.leaderReplayed(view) }
         view.onReady = { [weak self, weak window, weak view] status in
             EventLog.write("page ready on display \(Self.displayId(screen)): \(status.prefix(300))")
             window?.alphaValue = 1
@@ -318,6 +354,17 @@ final class WallpaperController {
         center.addObserver(forName: .init("\(prefix).qa.restartPages"), object: nil, queue: .main) { [weak self] _ in
             EventLog.write("qa: restart pages")
             self?.views.forEach { $0.restart() }
+        }
+        // Forget the last display's window, then rebuild 5 s later as if it
+        // had been unplugged and plugged back in.
+        center.addObserver(forName: .init("\(prefix).qa.replug"), object: nil, queue: .main) { [weak self] _ in
+            guard let self, self.views.count > 1 else { return }
+            EventLog.write("qa: replug display \(self.screenIds.last ?? 0)")
+            self.views.removeLast().setRunning(false)
+            self.windows.removeLast().close()
+            self.screenIds.removeLast()
+            self.lastPointer.removeLast()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { self.rebuildWindows() }
         }
         center.addObserver(forName: .init("\(prefix).qa.pause"), object: nil, queue: .main) { [weak self] note in
             guard let self else { return }

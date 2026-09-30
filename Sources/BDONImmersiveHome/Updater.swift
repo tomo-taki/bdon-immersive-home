@@ -36,6 +36,10 @@ final class Updater: ObservableObject {
         case failed(String)
     }
 
+    private enum UpdateError: Error {
+        case missingPackage
+    }
+
     @Published private(set) var state = State.idle
 
     private static let packageName = "BDONImmersiveHome.dmg"
@@ -76,6 +80,8 @@ final class Updater: ObservableObject {
                 state = try await Self.latest().map { .available($0) } ?? .upToDate
                 // QA: BDON_UPDATE_AUTO=1 installs without the click.
                 if ProcessInfo.processInfo.environment["BDON_UPDATE_AUTO"] == "1" { install() }
+            } catch UpdateError.missingPackage {
+                state = .failed("새 버전의 설치 파일을 찾을 수 없습니다")
             } catch {
                 state = .failed("업데이트 정보를 가져오지 못했습니다")
             }
@@ -102,7 +108,10 @@ final class Updater: ObservableObject {
         guard let build = Int(payload.tag_name.drop { !$0.isNumber }),
               let current = currentBuild, build > current else { return nil }
         let asset = { (name: String) in payload.assets.first { $0.name == name }?.browser_download_url }
-        guard let package = asset(packageName), let checksums = asset(checksumName) else { return nil }
+        // A newer release without our file (e.g. renamed asset) is not "up to date".
+        guard let package = asset(packageName), let checksums = asset(checksumName) else {
+            throw UpdateError.missingPackage
+        }
         return Release(build: build, title: payload.name ?? payload.tag_name,
                        package: package, checksums: checksums, page: payload.html_url)
     }
