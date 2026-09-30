@@ -38,7 +38,8 @@ cp dist/windows/BDONImmersiveHome-win-x64.zip dist/windows/BDONImmersiveHome-win
 # The APK must come from HEAD too (its versionName carries the commit).
 APK="dist/android/BDONImmersiveHome-android.apk"
 AAPT2="$(ls -d "$HOME"/Library/Android/sdk/build-tools/*/aapt2 | tail -1)"
-"$AAPT2" dump badging "$APK" | grep -q "versionName='.*($COMMIT)'" \
+BADGING="$("$AAPT2" dump badging "$APK")"
+[[ "$BADGING" == *"versionName='"*"($COMMIT)'"* ]] \
   || { echo "$APK was not built from $COMMIT: rebuild"; exit 1; }
 cp "$APK" "$OUT/"
 (cd "$OUT" && shasum -a 256 BDONImmersiveHome* > SHA256SUMS.txt)
