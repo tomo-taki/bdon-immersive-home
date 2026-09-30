@@ -4,6 +4,10 @@ dist/
 windows/native/out/
 windows/web/out/
 windows/*/build-tmp/
+android/build-tmp/
+# Unused Filament experiment (the GLES renderer ships)
+android/app/src/main/materials/
+android/app/src/main/assets/materials/
 windows/web/node_modules/
 windows/web/app/node_modules/
 web/node_modules/

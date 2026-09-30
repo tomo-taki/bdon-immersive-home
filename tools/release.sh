@@ -7,11 +7,12 @@
 #   assets BDONImmersiveHome.dmg                  (install and self-update)
 #          BDONImmersiveHome-win-x64.zip
 #          BDONImmersiveHome-win-arm64.zip
+#          BDONImmersiveHome-android.apk          (sideload install)
 #          SHA256SUMS.txt                         (checked before applying)
 #
 # Usage: tools/release.sh [--dry-run]    (needs `gh auth login`)
 # Build first: ./build.sh && tools/make_dmg.sh && windows/native/build.sh both
-#              && windows/native/package.sh both
+#              && windows/native/package.sh both && android/build.sh
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,6 +34,13 @@ TITLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Co
 rm -rf "$OUT" && mkdir -p "$OUT"
 cp dist/BDONImmersiveHome.dmg "$OUT/"
 cp dist/windows/BDONImmersiveHome-win-x64.zip dist/windows/BDONImmersiveHome-win-arm64.zip "$OUT/"
+
+# The APK must come from HEAD too (its versionName carries the commit).
+APK="dist/android/BDONImmersiveHome-android.apk"
+AAPT2="$(ls -d "$HOME"/Library/Android/sdk/build-tools/*/aapt2 | tail -1)"
+"$AAPT2" dump badging "$APK" | grep -q "versionName='.*($COMMIT)'" \
+  || { echo "$APK was not built from $COMMIT: rebuild"; exit 1; }
+cp "$APK" "$OUT/"
 (cd "$OUT" && shasum -a 256 BDONImmersiveHome* > SHA256SUMS.txt)
 cat "$OUT/SHA256SUMS.txt"
 

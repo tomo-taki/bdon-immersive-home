@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BDON 이머시브 홈</string>
+    <!-- Launcher / wallpaper-picker label (system chrome), English per spec. -->
+    <string name="app_label">BDON Immersive Home</string>
+    <string name="wallpaper_description">방과 캐릭터가 살아 있는 라이브 배경화면</string>
+    <string name="set_wallpaper">배경화면으로 설정</string>
+    <string name="scene">장면</string>
+    <string name="show_characters">캐릭터 표시</string>
+    <string name="parallax">스와이프로 시점 이동</string>
+    <string name="shuffle">장면 셔플</string>
+    <string name="shuffle_interval">변경 주기</string>
+    <string name="shuffle_mode">셔플 방식</string>
+    <string name="shuffle_mode_interval">시간마다</string>
+    <string name="shuffle_mode_screen_on">화면을 켤 때마다</string>
+    <string name="reset_defaults">기본값으로 되돌리기</string>
+    <string name="no_scenes">사용 가능한 장면이 없습니다. 데이터가 포함되지 않았을 수 있습니다.</string>
+    <string name="chooser_unavailable">라이브 배경화면 설정 화면을 열 수 없습니다.</string>
+
+    <string name="tab_scene">배경</string>
+    <string name="tab_detail">상세</string>
+    <string name="tab_about">정보</string>
+    <string name="section_display">표시</string>
+    <string name="section_shuffle">셔플</string>
+
+    <string name="version_prefix">버전</string>
+    <string name="license_fan">비공식 팬 제작 앱입니다. 게임 에셋의 권리는 © BanG Dream! Project 및 각 권리자에 있습니다.</string>
+    <string name="license_spine">Spine Runtimes (spine-c 4.2) © 2013-2025 Esoteric Software LLC.</string>
+
+    <string-array name="shuffle_intervals">
+        <item>1분마다</item>
+        <item>5분마다</item>
+        <item>10분마다</item>
+        <item>30분마다</item>
+        <item>1시간마다</item>
+    </string-array>
+</resources>
