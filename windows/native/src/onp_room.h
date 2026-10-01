@@ -76,11 +76,21 @@ inline Room loadRoomFromBytes(const std::vector<uint8_t>& data, const Mat4& root
         throw std::runtime_error("not glb");
 
     uint32_t jsonLength = leU32(data.data(), 12);
+    size_t binStart = 20 + (size_t)jsonLength + 8;
+    if (binStart > data.size()) throw std::runtime_error("glb truncated");
     std::string jsonText(reinterpret_cast<const char*>(data.data() + 20), jsonLength);
-    size_t binStart = 20 + jsonLength + 8;
     json gltf = json::parse(jsonText);
     const uint8_t* bin = data.data() + binStart;
     size_t binLen = data.size() - binStart;
+
+    // `count` elements of `size` bytes, `stride` apart from `base`, must lie
+    // inside the BIN chunk: a damaged file throws instead of reading past it.
+    auto checkRange = [&](size_t base, size_t count, size_t stride, size_t size) {
+        if (count == 0) return;
+        if (base > binLen || size > binLen - base ||
+            (stride && count - 1 > (binLen - base - size) / stride))
+            throw std::runtime_error("glb buffer out of range");
+    };
 
     const json& bufferViews = gltf.at("bufferViews");
     const json& accessors = gltf.at("accessors");
@@ -102,6 +112,7 @@ inline Room loadRoomFromBytes(const std::vector<uint8_t>& data, const Mat4& root
         size_t stride = viewStride(viewIndex, components * 4);
         size_t base = viewOffset(viewIndex) + acc.value("byteOffset", 0);
         size_t count = acc.at("count").get<size_t>();
+        checkRange(base, count, stride, (size_t)components * 4);
         std::vector<float> out(count * components);
         for (size_t i = 0; i < count; ++i)
             for (int cc = 0; cc < components; ++cc)
@@ -115,6 +126,8 @@ inline Room loadRoomFromBytes(const std::vector<uint8_t>& data, const Mat4& root
         size_t base = viewOffset(viewIndex) + acc.value("byteOffset", 0);
         int componentType = acc.at("componentType").get<int>();
         size_t count = acc.at("count").get<size_t>();
+        size_t size = componentType == 5121 ? 1 : componentType == 5123 ? 2 : 4;
+        checkRange(base, count, size, size);
         std::vector<uint32_t> out(count);
         for (size_t i = 0; i < count; ++i) {
             switch (componentType) {
@@ -135,6 +148,7 @@ inline Room loadRoomFromBytes(const std::vector<uint8_t>& data, const Mat4& root
             if (img.contains("bufferView")) {
                 int v = img.at("bufferView").get<int>();
                 size_t off = viewOffset(v), len = viewLength(v);
+                checkRange(off, 1, 0, len);
                 blob.bytes.assign(bin + off, bin + off + len);
             } else {
                 throw std::runtime_error("external image");

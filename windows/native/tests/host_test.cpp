@@ -9,6 +9,8 @@
 //   1. Spot 30001 parses with 3 residents.
 //   2. glb mesh count matches Room.swift logic (total + transparent).
 //   3. Camera matrices for 30001 at 1920x1080 equal the Swift ones.
+// Plus: cover.json zoom, and every Spot in index.json parses ("animation":
+// null slots).
 
 #include <math.h>   // ensure the INFINITY macro is defined before libc++ internals
 #include <cmath>
@@ -27,6 +29,15 @@ static void checkInt(const char* label, long got, long want) {
     bool ok = got == want;
     std::printf("  %-28s got=%ld want=%ld  %s\n", label, got, want, ok ? "PASS" : "FAIL");
     if (!ok) ++g_failures;
+}
+
+static void checkText(const char* label, const std::string& got, const std::string& want) {
+    bool ok = got == want;
+    std::printf("  %-28s %s\n", label, ok ? "PASS" : "FAIL");
+    if (!ok) {
+        ++g_failures;
+        std::printf("    got : %s\n    want: %s\n", got.c_str(), want.c_str());
+    }
 }
 
 static void checkFloat(const char* label, double got, double want, double tol) {
@@ -100,6 +111,27 @@ int main(int argc, char** argv) {
     checkFloat("zoomed projection y", zc.projection.c[1].y, uc.projection.c[1].y / 0.8, 1e-4);
     checkMatrix("zoom keeps view", zc.view,
                 std::vector<float>(&uc.view.c[0].x, &uc.view.c[0].x + 16), 1e-6);
+
+    // 5. Every Spot parses, including slots exported with "animation": null.
+    std::printf("\n== Spot index ==\n");
+    long parsed = 0, total = 0;
+    for (const auto& entry : loadSpotIndex(spotsDir + "/index.json")) {
+        ++total;
+        try {
+            loadSpotData(spotsDir + "/" + entry.dir + "/spot.json");
+            ++parsed;
+        } catch (const std::exception& e) {
+            std::printf("  %s: %s\n", entry.id.c_str(), e.what());
+        }
+    }
+    checkInt("spots parsed", parsed, total);
+    SpotData nulls = parseSpotData(json::parse(readFile(spotDir + "/spot.json")));
+    json withNull = json::parse(readFile(spotDir + "/spot.json"));
+    withNull["characters"][0]["animation"] = nullptr;
+    withNull["characters"][0]["order"] = nullptr;
+    nulls = parseSpotData(withNull);
+    checkText("null animation -> none", nulls.characters[0].animation, "");
+    checkInt("null order -> 0", nulls.characters[0].order, 0);
 
     std::printf("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL PASS" : "FAILURES",
                 g_failures, g_failures == 1 ? "" : "s");

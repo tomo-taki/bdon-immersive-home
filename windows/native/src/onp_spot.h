@@ -17,6 +17,15 @@ namespace onp {
 
 using json = nlohmann::json;
 
+// Optional field: `fallback` when the key is absent or null. json::value()
+// throws on a present null, and the exports carry "animation": null on some
+// slots (Spots 40007, 50003, 50005 and 50007 failed to load on Windows).
+template <class T>
+inline T valueOr(const json& object, const char* key, T fallback) {
+    auto it = object.find(key);
+    return it == object.end() || it->is_null() ? fallback : it->get<T>();
+}
+
 struct SpotSituation {
     Vec3 originalOffset;
     Vec3 defaultPositionOffset;
@@ -101,7 +110,7 @@ inline std::string readFile(const std::string& path) {
 
 inline SpotData parseSpotData(const json& j) {
     SpotData d;
-    d.name = j.value("name", std::string());
+    d.name = valueOr(j, "name", std::string());
 
     const json& s = j.at("situation");
     d.situation.originalOffset = readVec3(s.at("originalOffset"));
@@ -138,9 +147,9 @@ inline SpotData parseSpotData(const json& j) {
         sc.scale = ch.at("scale").get<float>();
         const auto& w = ch.at("world");
         for (int i = 0; i < 16; ++i) sc.world[i] = w[i].get<float>();
-        sc.animation = ch.value("animation", std::string());
-        sc.loop = ch.value("loop", false);
-        sc.order = ch.value("order", 0);
+        sc.animation = valueOr(ch, "animation", std::string());
+        sc.loop = valueOr(ch, "loop", false);
+        sc.order = valueOr(ch, "order", 0);
         d.characters.push_back(std::move(sc));
     }
     return d;
@@ -161,8 +170,8 @@ inline CoverTable loadCoverTable(const std::string& coverJsonPath) {
     if (j.is_discarded()) {
         return t;
     }
-    for (const auto& a : j.value("aspects", json::array())) t.aspects.push_back(a.get<float>());
-    for (const auto& z : j.value("zoom", json::array())) t.zoom.push_back(z.get<float>());
+    for (const auto& a : valueOr(j, "aspects", json::array())) t.aspects.push_back(a.get<float>());
+    for (const auto& z : valueOr(j, "zoom", json::array())) t.zoom.push_back(z.get<float>());
     return t;
 }
 
@@ -276,11 +285,11 @@ inline std::vector<SpotIndexEntry> loadSpotIndex(const std::string& indexJsonPat
     for (const auto& e : j) {
         SpotIndexEntry s;
         s.id = e.at("id").get<std::string>();
-        s.name = e.value("name", std::string());
-        s.band = e.value("band", std::string());
-        s.room = e.value("room", std::string());
-        s.dir = e.value("dir", std::string());
-        for (const auto& c : e.value("characters", json::array()))
+        s.name = valueOr(e, "name", std::string());
+        s.band = valueOr(e, "band", std::string());
+        s.room = valueOr(e, "room", std::string());
+        s.dir = valueOr(e, "dir", std::string());
+        for (const auto& c : valueOr(e, "characters", json::array()))
             s.characters.push_back(c.get<std::string>());
         out.push_back(std::move(s));
     }

@@ -169,6 +169,7 @@ bool D3DContext::init(std::string& errorOut) {
         s.Filter = filter;
         auto mode = repeat ? D3D11_TEXTURE_ADDRESS_WRAP : D3D11_TEXTURE_ADDRESS_CLAMP;
         s.AddressU = s.AddressV = s.AddressW = mode;
+        s.ComparisonFunc = D3D11_COMPARISON_NEVER;   // unused here; 0 is no valid value
         s.MaxLOD = mip ? D3D11_FLOAT32_MAX : 0;
         s.MaxAnisotropy = 1;
         device->CreateSamplerState(&s, out);

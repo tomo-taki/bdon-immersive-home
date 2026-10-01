@@ -26,6 +26,8 @@ BT="$SDK/build-tools/$BUILD_TOOLS"
 ANDROID_JAR="$SDK/platforms/$PLATFORM/android.jar"
 JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}"
 JAVAC="$JAVA_HOME/bin/javac"
+# d8 and apksigner run plain `java`; macOS' /usr/bin/java is a stub without a JRE.
+export JAVA_HOME PATH="$JAVA_HOME/bin:$PATH"
 
 TC="$NDK/toolchains/llvm/prebuilt/darwin-x86_64"
 CLANGXX="$TC/bin/aarch64-linux-android${API}-clang++"

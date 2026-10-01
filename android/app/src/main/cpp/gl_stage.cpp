@@ -116,35 +116,9 @@ static Resident makeResident(const SpotCharacter& ch, SBDrawable* drawable, cons
 
 // ---- Stage ----
 
-// Android-side tolerant loader. The shared onp_spot.h parser reads some string
-// fields with json::value("key", default), which THROWS type_error.302 when the
-// key is present but null (nlohmann returns the default only when the key is
-// ABSENT). Several ship spots carry "animation": null (e.g. 50007's shadow
-// slots), which the Mac/Windows loaders accept because their decoders treat the
-// field as optional (String? / value_or). We reproduce that tolerance here by
-// erasing null-valued nullable fields before handing the json to the shared
-// parser -- without editing the shared header (a protected file). A malformed
-// or unreadable spot.json throws, exactly as before, so the caller's try/catch
-// still guards the render/live path against a bad spot.
-static SpotData loadSpotDataTolerant(const std::string& spotJsonPath) {
-    json j = json::parse(readFile(spotJsonPath));   // throws on malformed -> caught by caller
-    if (j.contains("characters") && j["characters"].is_array()) {
-        for (auto& ch : j["characters"]) {
-            if (!ch.is_object()) continue;
-            // Nullable string fields the shared parser reads via value(...):
-            // a present-but-null value must look ABSENT so the default applies.
-            for (const char* key : {"animation"}) {
-                auto it = ch.find(key);
-                if (it != ch.end() && it->is_null()) ch.erase(it);
-            }
-        }
-    }
-    return parseSpotData(j);
-}
-
 Stage::Stage(const std::string& spotsDir, const std::string& dir) : dir(dir) {
     std::string spotDir = spotsDir + "/" + dir;
-    data = loadSpotDataTolerant(spotDir + "/spot.json");
+    data = loadSpotData(spotDir + "/spot.json");
     data.cover = loadCoverTable(spotDir + "/cover.json");
 
     std::string roomFolder = dir.substr(0, dir.find('/'));
