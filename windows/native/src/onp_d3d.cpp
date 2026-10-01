@@ -138,6 +138,11 @@ bool D3DContext::init(std::string& errorOut) {
     device->CreateRasterizerState(&rd, &rasterNoCull);
 
     // Blend states. All premultiplied; alpha channel matches the Metal setup.
+    // D3D11 allows no *_COLOR factor on alpha (CreateBlendState fails), so
+    // Metal's .oneMinusSourceColor alpha factor (1 - src alpha) is
+    // INV_SRC_ALPHA here. (Unchecked, the failed screen state drew those
+    // slots unblended: black boxes around the Spot 50001 stage lights.)
+    bool blendOk = true;
     auto blend = [&](D3D11_BLEND src, D3D11_BLEND dst, D3D11_BLEND srcA, D3D11_BLEND dstA,
                      bool enable, ID3D11BlendState** out) {
         D3D11_BLEND_DESC b = {};
@@ -146,13 +151,17 @@ bool D3DContext::init(std::string& errorOut) {
         rt.SrcBlend = src; rt.DestBlend = dst; rt.BlendOp = D3D11_BLEND_OP_ADD;
         rt.SrcBlendAlpha = srcA; rt.DestBlendAlpha = dstA; rt.BlendOpAlpha = D3D11_BLEND_OP_ADD;
         rt.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-        device->CreateBlendState(&b, out);
+        if (FAILED(device->CreateBlendState(&b, out))) blendOk = false;
     };
     blend(D3D11_BLEND_ONE, D3D11_BLEND_ZERO, D3D11_BLEND_ONE, D3D11_BLEND_ZERO, FALSE, &blendNone);
     blend(D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_ALPHA, TRUE, &blendPremul);
     blend(D3D11_BLEND_ONE, D3D11_BLEND_ONE, D3D11_BLEND_ONE, D3D11_BLEND_ONE, TRUE, &blendAdd);
     blend(D3D11_BLEND_DEST_COLOR, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_ALPHA, TRUE, &blendMultiply);
-    blend(D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_COLOR, D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_COLOR, TRUE, &blendScreen);
+    blend(D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_COLOR, D3D11_BLEND_ONE, D3D11_BLEND_INV_SRC_ALPHA, TRUE, &blendScreen);
+    if (!blendOk) {
+        errorOut = "CreateBlendState failed";
+        return false;
+    }
 
     // Samplers.
     auto sampler = [&](bool mip, bool repeat, D3D11_FILTER filter, ID3D11SamplerState** out) {
