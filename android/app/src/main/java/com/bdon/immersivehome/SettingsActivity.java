@@ -410,10 +410,11 @@ public final class SettingsActivity extends Activity {
         content.addView(lic);
     }
 
-    // ---- version: "2026.09.29 (hash)" from a generated string resource ----
+    // ---- version: "2026.09.29 (hash)", a string resource android/build.sh generates ----
+    // (R, not getIdentifier(..., getPackageName()): the application id is not
+    // the resource namespace.)
     private String versionString() {
-        int id = getResources().getIdentifier("build_version", "string", getPackageName());
-        return id != 0 ? getString(id) : "개발 빌드";
+        return getString(R.string.build_version);
     }
 
     // ---- pill builders ----

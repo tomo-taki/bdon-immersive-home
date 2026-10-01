@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- package is the code namespace (R, classes); android/build.sh sets the
+     application id, com.togawa.bdon_immersive_home. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.bdon.immersivehome">
 

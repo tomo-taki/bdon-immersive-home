@@ -27,9 +27,18 @@ mkdir -p "$WORK"
 "$VENV/bin/python" "$ROOT/macos/dmg/make_background.py" "$WORK/scene.png" "$WORK"
 tiffutil -cathidpicheck "$WORK/background.png" "$WORK/background@2x.png" -out "$WORK/background.tiff" 2>/dev/null
 
+# The DMG gets the release bundle id; dist/ keeps the dev build ("<id>.dev",
+# macos/build.sh), so the two never pass for each other.
+STAGED="$WORK/stage/$(basename "$APP")"
+mkdir -p "$WORK/stage"
+ditto "$APP" "$STAGED"
+DEV_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$STAGED/Contents/Info.plist")"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${DEV_ID%.dev}" "$STAGED/Contents/Info.plist"
+codesign --force --deep --sign - "$STAGED"
+
 rm -f "$DMG"
 "$VENV/bin/dmgbuild" -s "$ROOT/macos/dmg/settings.py" \
-    -D app="$APP" -D dmg_dir="$ROOT/macos/dmg" -D root="$ROOT" -D background="$WORK/background.tiff" \
+    -D app="$STAGED" -D dmg_dir="$ROOT/macos/dmg" -D root="$ROOT" -D background="$WORK/background.tiff" \
     "BDON Immersive Home" "$DMG"
 rm -rf "$WORK"
 echo "Built: $DMG ($(du -h "$DMG" | cut -f1))"

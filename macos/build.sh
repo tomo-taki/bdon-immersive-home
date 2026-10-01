@@ -4,7 +4,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="BDON Immersive Home"
-BUNDLE_ID="moe.local.bdon-immersive-home"
+BUNDLE_ID="com.togawa.bdon-immersive-home"
+# dist/ holds a dev build ("<id>.dev"); macos/make_dmg.sh puts the release id
+# back for the DMG. A build left here must never stand in for the installed
+# app: LaunchServices launches the highest version among apps sharing an id.
+DEV_BUNDLE_ID="$BUNDLE_ID.dev"
 APP="$ROOT/dist/$APP_NAME.app"
 
 cd "$ROOT"
@@ -61,7 +65,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
     <key>CFBundleName</key><string>$APP_NAME</string>
     <key>CFBundleDisplayName</key><string>$APP_NAME</string>
-    <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
+    <key>CFBundleIdentifier</key><string>$DEV_BUNDLE_ID</string>
     <key>CFBundleExecutable</key><string>BDONImmersiveHome</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>

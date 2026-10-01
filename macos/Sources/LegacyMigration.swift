@@ -1,29 +1,35 @@
 import AppKit
 
-/// The app used to ship as bundle id `moe.local.yumemita-wallpaper` with its
-/// files under "OurNotesWallpaper". On the first launch under the new id,
-/// carry the settings over and stop a still-running old build, so the user
-/// keeps their Spot, options and lock-screen originals.
+/// Earlier builds ran under other bundle ids (AppIdentity.previousIds; the
+/// first one wrote its files under "OurNotesWallpaper"). On the first launch
+/// under the current id, carry the settings over and stop a still-running old
+/// build, so the user keeps their Spot, options and lock-screen originals.
 enum LegacyMigration {
-    static let oldBundleId = "moe.local.yumemita-wallpaper"
-    /// Where the old build wrote its lock-screen stills.
+    /// Where the oldest build wrote its lock-screen stills.
     static let oldLockScreenDirectory: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent("OurNotesWallpaper/LockScreen", isDirectory: true)
     }()
-    private static let doneKey = "migratedFromYumemitaWallpaper"
+    private static let doneKey = "migratedLegacySettings"
 
     static func run() {
-        for old in NSRunningApplication.runningApplications(withBundleIdentifier: oldBundleId) {
-            old.terminate()
+        // An old build still running would draw a second set of windows.
+        for id in AppIdentity.previousIds {
+            for old in NSRunningApplication.runningApplications(withBundleIdentifier: id) {
+                old.terminate()
+            }
         }
         let defaults = UserDefaults.standard
         guard !defaults.bool(forKey: doneKey) else { return }
         defaults.set(true, forKey: doneKey)
-        guard let old = UserDefaults.standard.persistentDomain(forName: oldBundleId), !old.isEmpty else { return }
-        for (key, value) in old where defaults.object(forKey: key) == nil {
-            defaults.set(value, forKey: key)
+
+        // Newest id first: a setting comes from the latest build that had it.
+        for id in AppIdentity.previousIds {
+            guard let old = defaults.persistentDomain(forName: id), !old.isEmpty else { continue }
+            for (key, value) in old where defaults.object(forKey: key) == nil {
+                defaults.set(value, forKey: key)
+            }
+            EventLog.write("migrated \(old.count) settings from \(id)")
         }
-        EventLog.write("migrated \(old.count) settings from \(oldBundleId)")
     }
 }

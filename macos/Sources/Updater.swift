@@ -53,9 +53,11 @@ final class Updater: ObservableObject {
     private static var repo: String { info["BDONUpdateRepo"] as? String ?? defaultRepo }
     private static var currentBuild: Int? { Int(info["CFBundleVersion"] as? String ?? "") }
 
-    /// Background checks: once shortly after launch, then daily.
+    /// Background checks: once shortly after launch, then daily. Builds
+    /// without a build number, and dev builds (`.dev`; a release would not
+    /// replace them, the bundle ids differ), check only when asked.
     func start() {
-        guard Self.currentBuild != nil else { return }      // dev build: nothing to compare
+        guard Self.currentBuild != nil, !AppIdentity.isDevBuild else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.firstCheckDelay) { [weak self] in
             self?.check()
         }

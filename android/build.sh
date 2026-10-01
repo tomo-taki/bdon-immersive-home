@@ -14,6 +14,11 @@ BUILD_TOOLS="36.1.0"
 PLATFORM="android-36.1"
 ABI="arm64-v8a"
 API="26"                       # minSdk / native target API
+# Application id. The mac id is com.togawa.bdon-immersive-home; Android ids
+# cannot hold "-", so it becomes "_" (the Java package-name rule). The code
+# keeps its namespace (com.bdon.immersivehome: R, classes, JNI symbols);
+# aapt2 renames only the package the system sees.
+APP_ID="com.togawa.bdon_immersive_home"
 
 set -euo pipefail
 
@@ -138,6 +143,7 @@ done
   --manifest "$HERE/app/src/main/AndroidManifest.xml" \
   --java "$GEN" \
   --min-sdk-version "$API" --target-sdk-version 36 \
+  --rename-manifest-package "$APP_ID" \
   --version-code "$BUILD_NO" --version-name "$BUILD_DATE ($COMMIT)" \
   "$OUT"/res-compiled/*.flat
 

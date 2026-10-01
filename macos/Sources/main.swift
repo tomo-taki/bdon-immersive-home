@@ -91,11 +91,12 @@ if let flag = settingsShot ?? aboutShot, flag + 1 < args.count {
 // Menu-bar-only app: no Dock icon, wallpaper windows on every display.
 let app = NSApplication.shared
 
-// One instance only: a second copy (login item + manual launch, or the old
-// "BDON Immersive Home.app" build sharing this bundle id) would stack a
-// second set of desktop windows and double the memory.
+// One instance only: a second copy (login item + manual launch, or a dev
+// build next to the installed app) would stack a second set of desktop
+// windows and double the memory. Builds under an earlier id are stopped by
+// LegacyMigration instead.
 let myPid = ProcessInfo.processInfo.processIdentifier
-let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+let others = AppIdentity.family.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
     .filter { $0.processIdentifier != myPid }
 if !others.isEmpty {
     EventLog.write("another instance is running (pid \(others.map(\.processIdentifier))); exiting")

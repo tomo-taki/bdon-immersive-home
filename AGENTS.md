@@ -22,3 +22,9 @@ The mac and Windows apps show each update's summary (the GitHub release body) in
 - `assets/bands/`: band logos for the settings screens. `assets/source/` (not committed) holds icon masters.
 - `data/` (not committed): `source/` downloads, `spots/` and `thumbs/` built by `tools/spots/` and `macos/build.sh`.
 - `tools/`: `release.sh` and the Spot data pipeline (`tools/spots/`).
+
+## App id
+
+- `com.togawa.bdon-immersive-home` on the mac. `macos/build.sh` gives the dist/ build `<id>.dev` and `macos/make_dmg.sh` restores the release id, so a build left in the repo never stands in for the installed app.
+- `com.togawa.bdon_immersive_home` on Android (no `-` allowed); the Java namespace stays `com.bdon.immersivehome`.
+- Windows has no bundle-style id (registry and folders use the product name).
