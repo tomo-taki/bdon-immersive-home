@@ -9,14 +9,15 @@
 //   1. Spot 30001 parses with 3 residents.
 //   2. glb mesh count matches Room.swift logic (total + transparent).
 //   3. Camera matrices for 30001 at 1920x1080 equal the Swift ones.
-// Plus: cover.json zoom, and every Spot in index.json parses ("animation":
-// null slots).
+// Plus: cover.json zoom, every Spot in index.json parses ("animation": null
+// slots), and the update pick from the releases list (onp_release.h).
 
 #include <math.h>   // ensure the INFINITY macro is defined before libc++ internals
 #include <cmath>
 #include <cstdio>
 #include <string>
 
+#include "../src/onp_release.h"
 #include "../src/onp_spot.h"
 #include "../src/onp_room.h"
 
@@ -132,6 +133,59 @@ int main(int argc, char** argv) {
     nulls = parseSpotData(withNull);
     checkText("null animation -> none", nulls.characters[0].animation, "");
     checkInt("null order -> 0", nulls.characters[0].order, 0);
+
+    // 6. Update pick: the newest release carrying our package, every newer
+    //    summary (ReleaseFeed.swift parity).
+    std::printf("\n== Update pick ==\n");
+    auto release = [](const char* tag, json name, json body, std::vector<const char*> assets,
+                      bool draft = false, bool prerelease = false) {
+        json r = {{"tag_name", tag}, {"name", name}, {"body", body}, {"draft", draft},
+                  {"prerelease", prerelease}, {"assets", json::array()}};
+        for (const char* a : assets)
+            r["assets"].push_back({{"name", a}, {"browser_download_url", std::string("https://x/") + tag + "/" + a}});
+        return r;
+    };
+    const char* dmg = "BDONImmersiveHome.dmg";
+    const char* win = "BDONImmersiveHome-win-x64.zip";
+    const char* sums = "SHA256SUMS.txt";
+    json feed = json::array({
+        release("b30", "2026.10.09 (c30)", "Windows fix", {win, sums}),
+        release("b29", "draft", "draft", {dmg, win, sums}, true),
+        release("b28", "2026.10.07 (c28)", "- mac 1\r\n- mac 2\r\n", {dmg, sums}),
+        release("b27", "pre", "pre", {dmg, win, sums}, false, true),
+        release("b26", "2026.10.05 (c26)", "no checksums", {win}),
+        release("b25", "2026.10.03 (c25)", "  all platforms  ", {dmg, win, sums}),
+        release("b23", "2026.10.02 (c23)", "BDON Immersive Home 2026.10.02 (c23)", {dmg, win, sums}),
+        release("b22", nullptr, nullptr, {dmg, win, sums}),
+        release("v9", "odd tag", "odd", {dmg, win, sums}),
+    });
+    auto pick = [&](int current, const char* package) { return pickUpdate(feed, current, package); };
+
+    auto w = pick(21, win);
+    checkInt("win: newest with zip", w ? w->build : -1, 30);
+    checkText("win: title", w ? w->title : "", "2026.10.09 (c30)");
+    checkText("win: package url", w ? w->packageUrl : "", "https://x/b30/BDONImmersiveHome-win-x64.zip");
+    checkText("win: checksum url", w ? w->checksumUrl : "", "https://x/b30/SHA256SUMS.txt");
+    checkText("win: summaries", w ? w->notes : "", "2026.10.09 (c30)\nWindows fix\n\n2026.10.03 (c25)\nall platforms");
+
+    auto m = pick(21, dmg);
+    checkInt("mac: skips windows-only", m ? m->build : -1, 28);
+    checkText("mac: summaries", m ? m->notes : "", "2026.10.07 (c28)\n- mac 1\n- mac 2\n\n2026.10.03 (c25)\nall platforms");
+    auto one = pick(25, dmg);
+    checkText("one summary, no title", one ? one->notes : "", "- mac 1\n- mac 2");
+    checkInt("up to date", pick(30, win) ? 1 : 0, 0);
+    checkInt("mac after windows-only", pick(28, dmg) ? 1 : 0, 0);
+    auto bare = pick(21, "BDONImmersiveHome-win-arm64.zip");
+    checkInt("no package anywhere", bare ? 1 : 0, 0);
+    auto legacy = pickUpdate(json::array({release("b22", nullptr, nullptr, {dmg, sums})}), 21, dmg);
+    checkText("null name -> tag", legacy ? legacy->title : "", "b22");
+    checkText("null body -> no notes", legacy ? legacy->notes : "x", "");
+    checkInt("not a list", pickUpdate(json::object(), 0, dmg) ? 1 : 0, 0);
+    checkInt("tag b42", releaseBuild("b42"), 42);
+    checkInt("tag v42", releaseBuild("v42"), -1);
+    checkInt("tag b4x", releaseBuild("b4x"), -1);
+    checkInt("tag b", releaseBuild("b"), -1);
+    checkInt("tag 10 digits", releaseBuild("b1234567890"), -1);
 
     std::printf("\n%s (%d failure%s)\n", g_failures == 0 ? "ALL PASS" : "FAILURES",
                 g_failures, g_failures == 1 ? "" : "s");

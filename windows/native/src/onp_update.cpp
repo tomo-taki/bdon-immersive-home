@@ -18,7 +18,9 @@
 
 #include "../third_party/json.hpp"
 #include "onp_install.h"
+#include "onp_release.h"
 #include "onp_settings.h"
+#include "onp_text.h"
 #include "onp_update.h"
 
 #ifndef BDON_BUILD_NUMBER
@@ -37,7 +39,6 @@ const char* kPackage = "BDONImmersiveHome-win-arm64.zip";
 #else
 const char* kPackage = "BDONImmersiveHome-win-x64.zip";
 #endif
-const char* kChecksums = "SHA256SUMS.txt";
 const char* kDefaultApi = "https://api.github.com";
 const wchar_t* kUserAgent = L"BDONImmersiveHome";
 const DWORD kFirstCheckMs = 15 * 1000;
@@ -50,26 +51,32 @@ HWND g_notify = nullptr;
 UINT g_message = 0;
 bool g_busy = false;
 
-void setStatus(UpdateState state, int percent = 0, const std::string* title = nullptr) {
+void notifyUi() {
+    if (g_notify) PostMessageW(g_notify, g_message, 0, 0);
+}
+
+// State change; the offered update's title and notes stay as they are.
+void setStatus(UpdateState state, int percent = 0) {
     {
         std::lock_guard<std::mutex> lock(g_mutex);
         g_status.state = state;
         g_status.percent = percent;
-        if (title) g_status.title = *title;
     }
-    if (g_notify) PostMessageW(g_notify, g_message, 0, 0);
+    notifyUi();
 }
 
-std::wstring widen(const std::string& s) {
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
-    std::wstring w(n, 0);
-    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
-    if (!w.empty() && w.back() == L'\0') w.pop_back();
-    return w;
+void offer(const ReleaseUpdate& update) {
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        g_packageUrl = update.packageUrl;
+        g_checksumUrl = update.checksumUrl;
+        g_status = {UpdateState::Available, update.title, update.notes, 0};
+    }
+    notifyUi();
 }
 
 std::string apiBase() {
-    const char* qa = std::getenv("BDON_UPDATE_API");   // QA: a local fake releases/latest
+    const char* qa = std::getenv("BDON_UPDATE_API");   // QA: a local fake releases list
     return qa && *qa ? qa : kDefaultApi;
 }
 
@@ -195,43 +202,23 @@ bool run(std::wstring cmd, bool wait) {
 void doCheck() {
     setStatus(UpdateState::Checking);
     std::string body;
-    if (!httpGet(apiBase() + "/repos/" BDON_UPDATE_REPO "/releases/latest", &body)) {
+    if (!httpGet(apiBase() + "/repos/" BDON_UPDATE_REPO "/releases?per_page=30", &body)) {
         setStatus(UpdateState::Failed);
         return;
     }
-    try {
-        auto j = nlohmann::json::parse(body);
-        std::string tag = j.value("tag_name", "");
-        size_t digit = tag.find_first_of("0123456789");
-        int build = digit == std::string::npos ? 0 : std::atoi(tag.c_str() + digit);
-        std::string package, checksums;
-        for (const auto& a : j["assets"]) {
-            std::string name = a.value("name", "");
-            if (name == kPackage) package = a.value("browser_download_url", "");
-            if (name == kChecksums) checksums = a.value("browser_download_url", "");
-        }
-        if (build <= BDON_BUILD_NUMBER) {
-            setStatus(UpdateState::UpToDate);
-            return;
-        }
-
-        // A newer release without our file (e.g. renamed asset) is not "up to date".
-        if (package.empty() || checksums.empty()) {
-            logLine("update " + tag + " has no " + kPackage);
-            setStatus(UpdateState::MissingPackage);
-            return;
-        }
-        std::string title = j.value("name", tag);
-        {
-            std::lock_guard<std::mutex> lock(g_mutex);
-            g_packageUrl = package;
-            g_checksumUrl = checksums;
-        }
-        logLine("update available: " + tag);
-        setStatus(UpdateState::Available, 0, &title);
-    } catch (...) {
+    // No-throw parse: anything but a list (an API error object) is a failure.
+    nlohmann::json releases = nlohmann::json::parse(body, nullptr, false);
+    if (!releases.is_array()) {
         setStatus(UpdateState::Failed);
+        return;
     }
+    std::optional<ReleaseUpdate> update = pickUpdate(releases, BDON_BUILD_NUMBER, kPackage);
+    if (!update) {
+        setStatus(UpdateState::UpToDate);
+        return;
+    }
+    logLine("update available: b" + std::to_string(update->build));
+    offer(*update);
 }
 
 void doInstall() {
@@ -271,7 +258,13 @@ void doInstall() {
 }
 
 void worker(void (*body)()) {
-    body();
+    // An exception escaping a std::thread would end the whole app.
+    try {
+        body();
+    } catch (...) {
+        logLine("update worker failed");
+        setStatus(UpdateState::Failed);
+    }
     std::lock_guard<std::mutex> lock(g_mutex);
     g_busy = false;
 }

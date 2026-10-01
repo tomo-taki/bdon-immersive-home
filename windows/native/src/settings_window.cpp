@@ -6,7 +6,8 @@
 //   배경  -> scene thumbnail grid with shuffle-pool behaviour (per band)
 //   상세  -> 표시 / 셔플 sections of option pills (OFF/ON radios, interval
 //            stepper, 셔플 대상 navigator) + "기본값으로 되돌리기"
-//   정보  -> app icon, name, version, licence box, one bug-report button
+//   정보  -> app icon, name, version, update row (+ the update's summary
+//            while one is on offer), licence box, one bug-report button
 // Easter egg: layout-independent VK_A..VK_Z typed here toggle 토모타키 / 아논소요.
 //
 // GDI+ approximations of SwiftUI are noted inline (search "APPROX").
@@ -21,6 +22,7 @@
 #include <gdiplus.h>
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <map>
 #include <string>
@@ -29,6 +31,7 @@
 #include "onp_update.h"
 #include "onp_settings.h"
 #include "onp_spot.h"
+#include "onp_text.h"
 
 using namespace onp;
 using namespace Gdiplus;
@@ -92,10 +95,28 @@ Tab g_tab = Tab::Scene;
 Section g_section = Section::Display;
 Option g_expanded = Option::None;     // one pill open at a time
 std::string g_band;                   // selected band in the 배경 tab
-int g_sceneScroll = 0;                // scroll offset for the scene grid (logical px)
-int g_sceneContentH = 0;              // measured grid content height
-int g_detailScroll = 0;               // scroll offset for the 상세 pill list
-int g_detailContentH = 0;
+
+// A wheel-scrolled region (logical px). Each paint measures the content and
+// the visible height; the offset is clamped to them.
+struct Scroller {
+    int offset = 0;
+    int contentH = 0;
+    int viewH = 0;
+    RECT area = {};                   // where the wheel scrolls it
+
+    int maxOffset() const { return (std::max)(0, contentH - viewH); }
+    void scroll(int delta) { offset = (std::min)((std::max)(0, offset - delta), maxOffset()); }
+    // After a paint: true when the offset had to move (content shrank).
+    bool settle() {
+        int clamped = (std::min)(offset, maxOffset());
+        if (clamped == offset) return false;
+        offset = clamped;
+        return true;
+    }
+};
+Scroller g_sceneScroll;               // 배경 scene grid
+Scroller g_detailScroll;              // 상세 pill list
+Scroller g_notesScroll;               // 정보 update summary
 
 // Easter-egg typed buffer (layout-independent, VK_A..VK_Z).
 std::string g_eggBuffer;
@@ -107,13 +128,6 @@ RECT logicalClient(HWND hwnd) {
     c.right  = (LONG)(c.right  / g_uiScale);
     c.bottom = (LONG)(c.bottom / g_uiScale);
     return c;
-}
-
-std::wstring toW(const std::string& s) {
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
-    std::wstring w(n, 0);
-    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), w.data(), n);
-    return w;
 }
 
 // Korean UI strings (UTF-8 byte literals so the source needs no BOM).
@@ -141,6 +155,7 @@ const char* kLicBody1   = "\xEB\xB9\x84\xEA\xB3\xB5\xEC\x8B\x9D \xED\x8C\xAC \xE
 const char* kLicBody2   = "Spine Runtimes (spine-c 4.2) \xC2\xA9 2013-2025 Esoteric Software LLC \xE2\x80\x94 Spine Runtimes License Agreement.";
 const char* kBugReport  = "\xEB\xB2\x84\xEA\xB7\xB8 \xEB\xA6\xAC\xED\x8F\xAC\xED\x8A\xB8 \xEB\xB0\x8F \xEC\xA0\x9C\xEC\x95\x88"; // 버그 리포트 및 제안
 const char* kVersionPfx = "\xEB\xB2\x84\xEC\xA0\x84 ";                                       // "버전 "
+const char* kUpdateNotes = "\xEC\x97\x85\xEB\x8D\xB0\xEC\x9D\xB4\xED\x8A\xB8 \xEB\x82\xB4\xEC\x9A\xA9"; // 업데이트 내용
 const char* kContact    = "tomo.taki@proton.me";
 
 // ---- version string (build-time defines from build.sh) ----
@@ -193,10 +208,10 @@ Image* thumbnail(const std::string& id, bool chars) {
     if (it != g_thumbCache.end()) return it->second;
     std::string base = dataRoot() + "\\thumbs\\";
     std::string file = base + id + (chars ? ".jpg" : "_bg.jpg");
-    Image* img = Image::FromFile(toW(file).c_str());
+    Image* img = Image::FromFile(widen(file).c_str());
     if (!img || img->GetLastStatus() != Ok) {
         delete img;
-        img = Image::FromFile(toW(base + id + ".jpg").c_str());   // fallback
+        img = Image::FromFile(widen(base + id + ".jpg").c_str());   // fallback
     }
     g_thumbCache[key] = img;
     return img;
@@ -207,7 +222,7 @@ Image* bandIcon(const std::string& band) {
     auto it = g_bandIconCache.find(name);
     if (it != g_bandIconCache.end()) return it->second;
     std::string file = dataRoot() + "\\bands\\" + name + ".png";
-    Image* img = Image::FromFile(toW(file).c_str());
+    Image* img = Image::FromFile(widen(file).c_str());
     if (img && img->GetLastStatus() != Ok) { delete img; img = nullptr; }
     g_bandIconCache[name] = img;
     return img;
@@ -277,7 +292,7 @@ void drawText(Graphics& g, const char* s, float x, float y, float size, Color c,
     sf.SetAlignment(align);
     if (wrapW <= 0) sf.SetFormatFlags(sf.GetFormatFlags() | StringFormatFlagsNoWrap);
     RectF layout(x, y, wrapW > 0 ? wrapW : 4000.0f, 4000.0f);
-    g.DrawString(toW(s).c_str(), -1, &font, layout, &sf, &br);
+    g.DrawString(widen(s).c_str(), -1, &font, layout, &sf, &br);
 }
 
 // Measured height of wrapped text (for the licence box layout).
@@ -285,7 +300,7 @@ float measureTextHeight(Graphics& g, const char* s, float size, float wrapW, boo
     Font font(&uiFamily(), size, bold ? FontStyleBold : FontStyleRegular, UnitPixel);
     StringFormat sf(StringFormat::GenericTypographic());
     RectF layout(0, 0, wrapW, 4000.0f), bounds;
-    g.MeasureString(toW(s).c_str(), -1, &font, layout, &sf, &bounds);
+    g.MeasureString(widen(s).c_str(), -1, &font, layout, &sf, &bounds);
     return bounds.Height;
 }
 
@@ -486,7 +501,7 @@ void paintSubTabs(Graphics& g, RECT client) {
         for (const auto& band : bandOrder()) {
             std::string b = band;
             subTabRow(g, y, band, bandIcon(band), g_band == band, nullptr,
-                      [b]() { g_band = b; });
+                      [b]() { g_band = b; g_sceneScroll.offset = 0; });
             y += kSubRowH;
         }
         break;
@@ -558,7 +573,7 @@ void paintSceneGrid(Graphics& g, RECT client) {
     Region oldClip; g.GetClip(&oldClip);
     g.SetClip(RectF((float)ox, (float)clipTop, (float)paneW, (float)(clipBottom - clipTop)));
 
-    int gy = clipTop + 6 - g_sceneScroll;
+    int gy = clipTop + 6 - g_sceneScroll.offset;
     int col = 0;
     for (auto* e : spots) {
         int x = x0 + col * (cellW + gap);
@@ -622,7 +637,10 @@ void paintSceneGrid(Graphics& g, RECT client) {
         if (++col == cols) { col = 0; gy += cellH + 22 + rowGap; }
     }
     if (col != 0) gy += cellH + 22 + rowGap;
-    g_sceneContentH = (gy + g_sceneScroll) - (clipTop + 6);
+    g_sceneScroll.contentH = (gy + g_sceneScroll.offset) - (clipTop + 6);
+    g_sceneScroll.viewH = clipBottom - clipTop - 6;
+    g_sceneScroll.area = {ox, 0, client.right, client.bottom};
+    if (g_sceneScroll.settle()) InvalidateRect(g_settingsHwnd, nullptr, FALSE);
 
     g.SetClip(&oldClip, CombineModeReplace);
 }
@@ -692,7 +710,7 @@ int paintPill(Graphics& g, int x, int y, const char* title, const char* value,
         float tw = 0;   // rough offset after the title
         Font f(&uiFamily(), 13, FontStyleBold, UnitPixel);
         RectF lay(0, 0, 1000, 100), b;
-        g.MeasureString(toW(title).c_str(), -1, &f, lay, &b); tw = b.Width;
+        g.MeasureString(widen(title).c_str(), -1, &f, lay, &b); tw = b.Width;
         float bw = 52, bh = 16, bx = tx + tw + 8, by = y + 11;
         GraphicsPath bc; capsulePath(bc, bx, by, bw, bh);
         SolidBrush m(T::magenta); g.FillPath(&m, &bc);
@@ -787,7 +805,7 @@ void paintDetailPane(Graphics& g, RECT client) {
     Region oldClip; g.GetClip(&oldClip);
     g.SetClip(RectF((float)ox, (float)clipTop, (float)paneW, (float)(clipBottom - clipTop)));
 
-    int y = clipTop + 2 - g_detailScroll;
+    int y = clipTop + 2 - g_detailScroll.offset;
 
     auto onOffPill = [&](Option opt, const char* title, bool* value, const char* badge) {
         bool expanded = (g_expanded == opt);
@@ -855,7 +873,10 @@ void paintDetailPane(Graphics& g, RECT client) {
             y += used + 14;
         }
     }
-    g_detailContentH = (y + g_detailScroll) - (clipTop + 2);
+    g_detailScroll.contentH = (y + g_detailScroll.offset) - (clipTop + 2);
+    g_detailScroll.viewH = clipBottom - clipTop - 2;
+    g_detailScroll.area = {ox, 0, client.right, client.bottom};
+    if (g_detailScroll.settle()) InvalidateRect(g_settingsHwnd, nullptr, FALSE);
 
     g.SetClip(&oldClip, CombineModeReplace);
 
@@ -877,6 +898,119 @@ void paintDetailPane(Graphics& g, RECT client) {
 //  Right column: 정보 (About) pane
 // =======================================================================
 HICON g_appIcon = nullptr;
+const int kAboutGap = 12;    // VStack spacing between the pane's blocks
+const int kNotesMaxH = 120;  // update summary text; longer ones scroll
+
+// LavenderButton (Theme.swift): ink title on a light gradient.
+void lavenderButton(Graphics& g, int x, int y, int w, int h, const char* title, std::function<void()> onClick) {
+    GraphicsPath rr; roundRectPath(rr, (float)x, (float)y, (float)w, (float)h, 4);
+    LinearGradientBrush fill(RectF((float)x, y - 0.5f, (float)w, h + 1.0f), T::lavTop, T::lavBottom, LinearGradientModeVertical);
+    g.FillPath(&fill, &rr);
+    Pen edge(rgb(255, 255, 255, 230), 1); g.DrawPath(&edge, &rr);
+    drawText(g, title, (float)x, (float)(y + (h - 15) / 2), 15, T::ink, true, StringAlignmentCenter, (float)w);
+    addHit(x, y, w, h, std::move(onClick));
+}
+
+// Status text beside the update button (AboutView UpdateRow parity).
+std::string updateStatusLine(const UpdateStatus& u) {
+    switch (u.state) {
+        case UpdateState::Checking:    return "\xED\x99\x95\xEC\x9D\xB8 \xEC\xA4\x91\xE2\x80\xA6";   // 확인 중…
+        case UpdateState::UpToDate:    return "\xEC\xB5\x9C\xEC\x8B\xA0 \xEB\xB2\x84\xEC\xA0\x84\xEC\x9E\x85\xEB\x8B\x88\xEB\x8B\xA4";   // 최신 버전입니다
+        case UpdateState::Available:   return "\xEC\x83\x88 \xEB\xB2\x84\xEC\xA0\x84 " + u.title;   // 새 버전 …
+        case UpdateState::Downloading: return "\xEB\x82\xB4\xEB\xA0\xA4\xEB\xB0\x9B\xEB\x8A\x94 \xEC\xA4\x91 " + std::to_string(u.percent) + "%";   // 내려받는 중 N%
+        case UpdateState::Installing:  return "\xEC\x84\xA4\xEC\xB9\x98 \xEC\xA4\x91\xE2\x80\xA6";   // 설치 중…
+        case UpdateState::Failed:      return "\xEC\x97\x85\xEB\x8D\xB0\xEC\x9D\xB4\xED\x8A\xB8\xEB\xA5\xBC \xED\x99\x95\xEC\x9D\xB8\xED\x95\x98\xEC\xA7\x80 \xEB\xAA\xBB\xED\x96\x88\xEC\x8A\xB5\xEB\x8B\x88\xEB\x8B\xA4";   // 업데이트를 확인하지 못했습니다
+        default:                       return {};
+    }
+}
+
+// One button (check, or install once an update is found) + status text.
+int paintUpdateRow(Graphics& g, int x0, int y, const UpdateStatus& u) {
+    const int bw = 200, bh = 40;
+    bool busy = u.state == UpdateState::Checking || u.state == UpdateState::Downloading ||
+                u.state == UpdateState::Installing;
+    int textX = x0;
+    if (!busy) {
+        bool install = u.state == UpdateState::Available;
+        lavenderButton(g, x0, y, bw, bh,
+                       install ? "\xEC\x97\x85\xEB\x8D\xB0\xEC\x9D\xB4\xED\x8A\xB8 \xEC\x84\xA4\xEC\xB9\x98"    // 업데이트 설치
+                               : "\xEC\x97\x85\xEB\x8D\xB0\xEC\x9D\xB4\xED\x8A\xB8 \xED\x99\x95\xEC\x9D\xB8",  // 업데이트 확인
+                       [install]() { if (install) installUpdate(); else checkForUpdate(); });
+        textX = x0 + bw + 16;
+    }
+    std::string status = updateStatusLine(u);
+    if (!status.empty())
+        drawText(g, status.c_str(), (float)textX, (float)(y + (bh - 13) / 2), 13, rgb(255, 255, 255, 217), true);
+    return bh;
+}
+
+// The update's summary as the human wrote it (the release body), while an
+// update is on offer or being applied (AboutView ReleaseNotes parity): the
+// box fits the text up to kNotesMaxH, then the wheel scrolls it. Returns the
+// box height, 0 when there is nothing to show.
+int paintReleaseNotes(Graphics& g, int x0, int y, int w, const UpdateStatus& u) {
+    if (!u.offered() || u.notes.empty()) {
+        g_notesScroll = {};
+        return 0;
+    }
+    const int pad = 14;
+    int textW = w - pad * 2;
+    int textH = (int)std::ceil(measureTextHeight(g, u.notes.c_str(), 12, (float)textW, false));
+    int viewH = (std::min)(textH, kNotesMaxH);
+    int boxH = pad + 20 + 8 + viewH + pad;
+
+    // Box, title and rule (licence box style).
+    GraphicsPath box; roundRectPath(box, (float)x0, (float)y, (float)w, (float)boxH, 6);
+    SolidBrush boxBg(rgb(0, 0, 0, 56)); g.FillPath(&boxBg, &box);
+    drawText(g, kUpdateNotes, (float)(x0 + pad), (float)(y + pad), 13, T::white, true);
+    fillRect(g, (float)(x0 + pad), (float)(y + pad + 20), (float)textW, 1, rgb(255, 255, 255, 153));
+
+    // Text, clipped to its view and shifted by the scroll offset.
+    int ty = y + pad + 20 + 8;
+    g_notesScroll.contentH = textH;
+    g_notesScroll.viewH = viewH;
+    g_notesScroll.area = {x0, ty, x0 + w, ty + viewH};
+    g_notesScroll.settle();
+    Region oldClip; g.GetClip(&oldClip);
+    g.SetClip(RectF((float)x0, (float)ty, (float)w, (float)viewH));
+    drawText(g, u.notes.c_str(), (float)(x0 + pad), (float)(ty - g_notesScroll.offset), 12,
+             rgb(255, 255, 255, 217), false, StringAlignmentNear, (float)textW);
+    g.SetClip(&oldClip, CombineModeReplace);
+    return boxH;
+}
+
+// Licence box (black 0.22, rounded 6). Returns its height.
+int paintLicence(Graphics& g, int x0, int y, int w) {
+    const int pad = 14;
+    int textW = w - pad * 2;
+    float h1 = measureTextHeight(g, kLicBody1, 11, (float)textW, false);
+    float h2 = measureTextHeight(g, kLicBody2, 11, (float)textW, false);
+    int boxH = pad + 20 + 8 + (int)h1 + 6 + (int)h2 + pad;
+    GraphicsPath box; roundRectPath(box, (float)x0, (float)y, (float)w, (float)boxH, 6);
+    SolidBrush boxBg(rgb(0, 0, 0, 56)); g.FillPath(&boxBg, &box);
+    int ly = y + pad;
+    drawText(g, kLicense, (float)(x0 + pad), (float)ly, 13, T::white, true);
+    ly += 20;
+    fillRect(g, (float)(x0 + pad), (float)ly, (float)textW, 1, rgb(255, 255, 255, 153));
+    ly += 8;
+    drawText(g, kLicBody1, (float)(x0 + pad), (float)ly, 11, rgb(255, 255, 255, 199), false, StringAlignmentNear, (float)textW);
+    ly += (int)h1 + 6;
+    drawText(g, kLicBody2, (float)(x0 + pad), (float)ly, 11, rgb(255, 255, 255, 199), false, StringAlignmentNear, (float)textW);
+    return boxH;
+}
+
+// mailto: with a prefilled, percent-encoded subject. ShellExecuteW opens
+// whatever mail handler the user has set.
+void mailBugReport() {
+    std::string subject = "[BDON Immersive Home] \xEB\xB2\x84\xEA\xB7\xB8 \xEB\xA6\xAC\xED\x8F\xAC\xED\x8A\xB8 / \xEC\xA0\x9C\xEC\x95\x88"; // 버그 리포트 / 제안
+    std::string enc;
+    for (unsigned char ch : subject) {
+        if (isalnum(ch) || ch == '-' || ch == '_' || ch == '.' || ch == '~') enc.push_back((char)ch);
+        else { char b[4]; std::snprintf(b, sizeof(b), "%%%02X", ch); enc += b; }
+    }
+    std::string url = std::string("mailto:") + kContact + "?subject=" + enc;
+    ShellExecuteW(nullptr, L"open", widen(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
 
 void paintAboutPane(Graphics& g, RECT client) {
     const int ox = kSidebarW + kSubTabW;
@@ -890,7 +1024,7 @@ void paintAboutPane(Graphics& g, RECT client) {
     drawText(g, kInfoTitle, (float)x0, (float)(y + 4), 20, T::white, true);
     y += 38;
     fillRect(g, (float)x0, (float)y, (float)contentW, 1, rgb(255, 255, 255, 178));
-    y += 6 + 6;
+    y += kAboutGap;
 
     // App icon (the exe's own icon, like NSApp.applicationIconImage) + name + version.
     int iconSize = 76;
@@ -910,83 +1044,14 @@ void paintAboutPane(Graphics& g, RECT client) {
     int tx = x0 + iconSize + 18;
     drawText(g, kAppName, (float)tx, (float)(y + 12), 22, T::white, true);
     drawText(g, versionString().c_str(), (float)tx, (float)(y + 44), 13, rgb(255, 255, 255, 204), true);
-    y += iconSize + 6 + 6;
+    y += iconSize + kAboutGap;
 
-    // Update row (AboutView UpdateRow parity): one button + status text.
-    {
-        UpdateStatus u = updateStatus();
-        const int bw = 200, bh = 40;
-        bool busy = u.state == UpdateState::Checking || u.state == UpdateState::Downloading ||
-                    u.state == UpdateState::Installing;
-        std::string status;
-        switch (u.state) {
-            case UpdateState::Checking:    status = "\xED\x99\x95\xEC\x9D\xB8 \xEC\xA4\x91\xE2\x80\xA6"; break;   // 확인 중…
-            case UpdateState::UpToDate:    status = "\xEC\xB5\x9C\xEC\x8B\xA0 \xEB\xB2\x84\xEC\xA0\x84\xEC\x9E\x85\xEB\x8B\x88\xEB\x8B\xA4"; break;   // 최신 버전입니다
-            case UpdateState::Available:   status = "\xEC\x83\x88 \xEB\xB2\x84\xEC\xA0\x84 " + u.title; break;   // 새 버전 …
-            case UpdateState::Downloading: status = "\xEB\x82\xB4\xEB\xA0\xA4\xEB\xB0\x9B\xEB\x8A\x94 \xEC\xA4\x91 " + std::to_string(u.percent) + "%"; break;   // 내려받는 중 N%
-            case UpdateState::Installing:  status = "\xEC\x84\xA4\xEC\xB9\x98 \xEC\xA4\x91\xE2\x80\xA6"; break;   // 설치 중…
-            case UpdateState::Failed:      status = "\xEC\x97\x85\xEB\x8D\xB0\xEC\x9D\xB4\xED\x8A\xB8\xEB\xA5\xBC \xED\x99\x95\xEC\x9D\xB8\xED\x95\x98\xEC\xA7\x80 \xEB\xAA\xBB\xED\x96\x88\xEC\x8A\xB5\xEB\x8B\x88\xEB\x8B\xA4"; break;   // 업데이트를 확인하지 못했습니다
-            case UpdateState::MissingPackage: status = "\xEC\x83\x88 \xEB\xB2\x84\xEC\xA0\x84\xEC\x9D\x98 \xEC\x84\xA4\xEC\xB9\x98 \xED\x8C\x8C\xEC\x9D\xBC\xEC\x9D\x84 \xEC\xB0\xBE\xEC\x9D\x84 \xEC\x88\x98 \xEC\x97\x86\xEC\x8A\xB5\xEB\x8B\x88\xEB\x8B\xA4"; break;   // 새 버전의 설치 파일을 찾을 수 없습니다
-            default: break;
-        }
-        bool install = u.state == UpdateState::Available;
-        const char* label = install ? "\xEC\x97\x85\xEB\x8D\xB0\xEC\x9D\xB4\xED\x8A\xB8 \xEC\x84\xA4\xEC\xB9\x98"    // 업데이트 설치
-                                    : "\xEC\x97\x85\xEB\x8D\xB0\xEC\x9D\xB4\xED\x8A\xB8 \xED\x99\x95\xEC\x9D\xB8";   // 업데이트 확인
-        int textX = x0;
-        if (!busy) {
-            GraphicsPath rr; roundRectPath(rr, (float)x0, (float)y, (float)bw, (float)bh, 4);
-            LinearGradientBrush fill(RectF((float)x0, y - 0.5f, (float)bw, bh + 1.0f), T::lavTop, T::lavBottom, LinearGradientModeVertical);
-            g.FillPath(&fill, &rr);
-            Pen edge(rgb(255, 255, 255, 230), 1); g.DrawPath(&edge, &rr);
-            drawText(g, label, (float)x0, (float)(y + (bh - 15) / 2), 15, T::ink, true, StringAlignmentCenter, bw);
-            addHit(x0, y, bw, bh, [install]() { if (install) installUpdate(); else checkForUpdate(); });
-            textX = x0 + bw + 16;
-        }
-        if (!status.empty())
-            drawText(g, status.c_str(), (float)textX, (float)(y + (bh - 13) / 2), 13, rgb(255, 255, 255, 217), true);
-        y += bh + 6 + 6;
-    }
-
-    // Licence box (black 0.22, rounded 6).
-    int boxPad = 14;
-    int textW = contentW - boxPad * 2;
-    float h1 = measureTextHeight(g, kLicBody1, 11, (float)textW, false);
-    float h2 = measureTextHeight(g, kLicBody2, 11, (float)textW, false);
-    int boxH = boxPad + 20 + 8 + (int)h1 + 6 + (int)h2 + boxPad;
-    GraphicsPath box; roundRectPath(box, (float)x0, (float)y, (float)contentW, (float)boxH, 6);
-    SolidBrush boxBg(rgb(0, 0, 0, 56)); g.FillPath(&boxBg, &box);
-    int ly = y + boxPad;
-    drawText(g, kLicense, (float)(x0 + boxPad), (float)ly, 13, T::white, true);
-    ly += 20;
-    fillRect(g, (float)(x0 + boxPad), (float)ly, (float)textW, 1, rgb(255, 255, 255, 153));
-    ly += 8;
-    drawText(g, kLicBody1, (float)(x0 + boxPad), (float)ly, 11, rgb(255, 255, 255, 199), false, StringAlignmentNear, (float)textW);
-    ly += (int)h1 + 6;
-    drawText(g, kLicBody2, (float)(x0 + boxPad), (float)ly, 11, rgb(255, 255, 255, 199), false, StringAlignmentNear, (float)textW);
-    y += boxH + 6 + 6;
-
-    // Lavender bug-report button (280 wide), opens a mailto: via ShellExecuteW.
-    {
-        const int bw = 280, bh = 46;
-        GraphicsPath rr; roundRectPath(rr, (float)x0, (float)y, (float)bw, (float)bh, 4);
-        LinearGradientBrush fill(RectF((float)x0, y - 0.5f, (float)bw, bh + 1.0f), T::lavTop, T::lavBottom, LinearGradientModeVertical);
-        g.FillPath(&fill, &rr);
-        Pen edge(rgb(255, 255, 255, 230), 1); g.DrawPath(&edge, &rr);
-        drawText(g, kBugReport, (float)x0, (float)(y + (bh - 15) / 2), 15, T::ink, true, StringAlignmentCenter, bw);
-        addHit(x0, y, bw, bh, []() {
-            // mailto: with a prefilled subject (URL-encoded). Opens the default
-            // mail handler; ShellExecuteW picks whatever the user has set.
-            std::string subject = "[BDON Immersive Home] \xEB\xB2\x84\xEA\xB7\xB8 \xEB\xA6\xAC\xED\x8F\xAC\xED\x8A\xB8 / \xEC\xA0\x9C\xEC\x95\x88"; // 버그 리포트 / 제안
-            // Percent-encode the subject bytes.
-            std::string enc;
-            for (unsigned char ch : subject) {
-                if (isalnum(ch) || ch == '-' || ch == '_' || ch == '.' || ch == '~') enc.push_back((char)ch);
-                else { char b[4]; std::snprintf(b, sizeof(b), "%%%02X", ch); enc += b; }
-            }
-            std::string url = std::string("mailto:") + kContact + "?subject=" + enc;
-            ShellExecuteW(nullptr, L"open", toW(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-        });
-    }
+    // Update row, the update's summary while one is on offer, licence, bug report.
+    UpdateStatus update = updateStatus();
+    y += paintUpdateRow(g, x0, y, update) + kAboutGap;
+    if (int notesH = paintReleaseNotes(g, x0, y, contentW, update)) y += notesH + kAboutGap;
+    y += paintLicence(g, x0, y, contentW) + kAboutGap;
+    lavenderButton(g, x0, y, 280, 46, kBugReport, mailBugReport);
 }
 
 // =======================================================================
@@ -1054,12 +1119,16 @@ void onClick(int mx, int my) {
     }
 }
 
-// Which scrollable region the cursor is over, for the wheel.
-int* scrollTargetFor(int mx) {
-    if (mx < kSidebarW + kSubTabW) return nullptr;
-    if (g_tab == Tab::Scene) return &g_sceneScroll;
-    if (g_tab == Tab::Display) return &g_detailScroll;
-    return nullptr;
+// The scroller under the cursor, for the wheel.
+Scroller* scrollTargetAt(int mx, int my) {
+    Scroller* target = nullptr;
+    switch (g_tab) {
+        case Tab::Scene:   target = &g_sceneScroll; break;
+        case Tab::Display: target = &g_detailScroll; break;
+        case Tab::About:   target = &g_notesScroll; break;
+    }
+    const RECT& r = target->area;
+    return mx >= r.left && mx < r.right && my >= r.top && my < r.bottom ? target : nullptr;
 }
 
 LRESULT CALLBACK settingsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -1074,12 +1143,8 @@ LRESULT CALLBACK settingsProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         case WM_MOUSEWHEEL: {
             POINT pt{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
             ScreenToClient(hwnd, &pt);
-            int lx = (int)(pt.x / g_uiScale);
-            int* target = scrollTargetFor(lx);
-            if (target) {
-                int delta = GET_WHEEL_DELTA_WPARAM(wparam);
-                *target -= delta / 2;
-                if (*target < 0) *target = 0;
+            if (Scroller* target = scrollTargetAt((int)(pt.x / g_uiScale), (int)(pt.y / g_uiScale))) {
+                target->scroll(GET_WHEEL_DELTA_WPARAM(wparam) / 2);
                 InvalidateRect(hwnd, nullptr, FALSE);
             }
             return 0;
@@ -1159,9 +1224,17 @@ void openSettingsWindow(HINSTANCE hinst) {
     int w = (int)(kLogicalW * g_uiScale) + frameW, h = (int)(kLogicalH * g_uiScale) + frameH;
     int x = work.left + (std::max)(0L, ((work.right - work.left) - w) / 2);
     int y = work.top + (std::max)(0L, ((work.bottom - work.top) - h) / 2);
-    g_settingsHwnd = CreateWindowExW(0, cls, toW(kTitleSettings).c_str(),   // 설정
+    g_settingsHwnd = CreateWindowExW(0, cls, widen(kTitleSettings).c_str(),   // 설정
                                      style, x, y, w, h,
                                      nullptr, nullptr, hinst, nullptr);
     ShowWindow(g_settingsHwnd, SW_SHOW);
     SetForegroundWindow(g_settingsHwnd);
+}
+
+// Settings on the 정보 tab, where the update and its summary show.
+void openSettingsAbout(HINSTANCE hinst) {
+    g_tab = Tab::About;
+    g_expanded = Option::None;
+    openSettingsWindow(hinst);
+    refreshSettingsWindow();
 }

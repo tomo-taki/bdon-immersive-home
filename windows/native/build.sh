@@ -85,6 +85,8 @@ build_target() {
   # Link (icon .res included when it built).
   "$ZIG" c++ -target "$triple" "${LDFLAGS[@]}" "${objs[@]}" $RES "${LIBS[@]}" \
       -o "$outdir/BDONImmersiveHome.exe"
+  # The version the exe shows; package.sh puts it beside the zip for tools/release.sh.
+  echo "$BUILD_DATE ($COMMIT)" > "$outdir/version.txt"
   echo "built $outdir/BDONImmersiveHome.exe ($(wc -c < "$outdir/BDONImmersiveHome.exe") bytes)"
 }
 

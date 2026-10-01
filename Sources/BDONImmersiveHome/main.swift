@@ -49,7 +49,9 @@ if let flag = args.firstIndex(of: "--coverage") {
 
 // `--settings-snapshot <out.png>` renders the settings window offscreen and exits (QA).
 // SETTINGS_TAB=배경|상세|정보, SETTINGS_SECTION=표시|셔플 picks the tab, SETTINGS_OPEN=characters|interval|...
-// opens that option pill. `--about-snapshot <out.png>` is the 정보 tab.
+// opens that option pill. `--about-snapshot <out.png>` is the 정보 tab; with
+// BDON_UPDATE_API (a fake releases list) it first checks for an update, so the
+// shot shows the offer and its summary (run the built .app: it has a build number).
 let settingsShot = args.firstIndex(of: "--settings-snapshot"), aboutShot = args.firstIndex(of: "--about-snapshot")
 if let flag = settingsShot ?? aboutShot, flag + 1 < args.count {
     _ = NSApplication.shared
@@ -65,6 +67,13 @@ if let flag = settingsShot ?? aboutShot, flag + 1 < args.count {
     case "shuffle": nav.expanded = .shuffle
     case "interval": nav.expanded = .interval
     default: break
+    }
+    if env["BDON_UPDATE_API"] != nil {
+        MainActor.assumeIsolated { Updater.shared.check() }
+        let deadline = Date().addingTimeInterval(10)
+        while MainActor.assumeIsolated({ Updater.shared.state == .checking }), Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
     }
     let view: NSView = NSHostingView(rootView: SettingsView(settings: WallpaperSettings.shared, nav: nav))
     view.frame = CGRect(x: 0, y: 0, width: 980, height: 700)

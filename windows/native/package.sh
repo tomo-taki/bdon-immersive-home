@@ -2,7 +2,9 @@
 # windows/native/package.sh -- assemble the distributable zips:
 #   dist/windows/BDONImmersiveHome-win-x64.zip
 #   dist/windows/BDONImmersiveHome-win-arm64.zip
-# Each zip = BDONImmersiveHome.exe + data/ (spots, thumbs, bands) + README-ko.txt.
+# Each zip = BDONImmersiveHome.exe + data/ (spots, thumbs, bands) + README-ko.txt,
+# with BDONImmersiveHome-win-<arch>.version beside it ("2026.09.29 (5786b63)",
+# from build.sh) so tools/release.sh can tell which commit it holds.
 #
 # Run windows/native/build.sh first. Temp staging goes under build-tmp.
 
@@ -19,7 +21,8 @@ mkdir -p "$DIST"
 package_arch() {
   local arch="$1"
   local exe="$HERE/out/$arch/BDONImmersiveHome.exe"
-  if [ ! -f "$exe" ]; then echo "missing $exe -- run build.sh first"; return 1; fi
+  local version="$HERE/out/$arch/version.txt"
+  if [ ! -f "$exe" ] || [ ! -f "$version" ]; then echo "missing $exe or its version.txt -- run build.sh first"; return 1; fi
 
   local root="$STAGE/$arch/BDONImmersiveHome"
   rm -rf "$STAGE/$arch"
@@ -37,9 +40,10 @@ package_arch() {
   find "$root" -name ".DS_Store" -delete 2>/dev/null || true
 
   local zip="$DIST/BDONImmersiveHome-win-$arch.zip"
-  rm -f "$zip"
+  rm -f "$zip" "${zip%.zip}.version"
   ( cd "$STAGE/$arch" && zip -qr -X "$zip" "BDONImmersiveHome" )
-  echo "packaged $zip ($(du -h "$zip" | cut -f1))"
+  cp "$version" "${zip%.zip}.version"
+  echo "packaged $zip ($(du -h "$zip" | cut -f1), $(cat "$version"))"
 }
 
 WHICH="${1:-both}"

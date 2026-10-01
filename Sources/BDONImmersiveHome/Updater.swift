@@ -4,10 +4,10 @@ import Foundation
 
 /// Self-update from GitHub Releases.
 ///
-///   GET api.github.com/repos/<repo>/releases/latest   (newest non-draft, non-prerelease)
-///     tag  "b<commit count>"  -> compared with CFBundleVersion (also the commit count)
-///     name "2026.09.29 (5786b63)"
-///     assets BDONImmersiveHome.dmg + SHA256SUMS.txt  (tools/release.sh)
+///   GET api.github.com/repos/<repo>/releases -> ReleaseFeed: the newest release
+///     with BDONImmersiveHome.dmg + SHA256SUMS.txt (tools/release.sh) whose tag
+///     "b<commit count>" beats CFBundleVersion (also the commit count), and its
+///     human-written summary for 설정 > 정보.
 ///
 ///   download DMG -> verify SHA-256 -> mount, copy the .app -> same bundle id?
 ///   -> replace this .app in place -> relaunch.
@@ -18,32 +18,29 @@ import Foundation
 final class Updater: ObservableObject {
     static let shared = Updater()
 
-    struct Release: Equatable {
-        let build: Int
-        let title: String
-        let package: URL
-        let checksums: URL
-        let page: URL
-    }
+    typealias Release = ReleaseFeed.Update
 
     enum State: Equatable {
         case idle
         case checking
         case upToDate
         case available(Release)
-        case downloading(Double)
-        case installing
+        case downloading(Release, Double)
+        case installing(Release)
         case failed(String)
-    }
 
-    private enum UpdateError: Error {
-        case missingPackage
+        /// The update on offer or being applied (its title and summary).
+        var release: Release? {
+            switch self {
+            case .available(let release), .downloading(let release, _), .installing(let release): return release
+            default: return nil
+            }
+        }
     }
 
     @Published private(set) var state = State.idle
 
     private static let packageName = "BDONImmersiveHome.dmg"
-    private static let checksumName = "SHA256SUMS.txt"
     private static let checkEvery: TimeInterval = 24 * 60 * 60
     private static let firstCheckDelay: TimeInterval =
         Double(ProcessInfo.processInfo.environment["BDON_UPDATE_DELAY"] ?? "") ?? 15
@@ -77,54 +74,39 @@ final class Updater: ObservableObject {
         state = .checking
         Task {
             do {
-                state = try await Self.latest().map { .available($0) } ?? .upToDate
+                state = try await Self.newest().map { .available($0) } ?? .upToDate
                 // QA: BDON_UPDATE_AUTO=1 installs without the click.
                 if ProcessInfo.processInfo.environment["BDON_UPDATE_AUTO"] == "1" { install() }
-            } catch UpdateError.missingPackage {
-                state = .failed("새 버전의 설치 파일을 찾을 수 없습니다")
             } catch {
                 state = .failed("업데이트 정보를 가져오지 못했습니다")
             }
         }
     }
 
-    /// Newer release, or nil when this build is the latest.
-    private static func latest() async throws -> Release? {
-        // QA: BDON_UPDATE_API=http://127.0.0.1:<port> serves a fake releases/latest.
+    /// Newer release for the mac, or nil when this build is the latest.
+    private static func newest() async throws -> Release? {
+        guard let current = currentBuild else { return nil }
+        // QA: BDON_UPDATE_API=http://127.0.0.1:<port> serves a fake releases list.
         let api = ProcessInfo.processInfo.environment["BDON_UPDATE_API"] ?? "https://api.github.com"
-        var request = URLRequest(url: URL(string: "\(api)/repos/\(repo)/releases/latest")!)
+        var request = URLRequest(url: URL(string: "\(api)/repos/\(repo)/releases?per_page=30")!)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("BDONImmersiveHome", forHTTPHeaderField: "User-Agent")
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-
-        struct Asset: Decodable { let name: String; let browser_download_url: URL }
-        struct Payload: Decodable { let tag_name: String; let name: String?; let html_url: URL; let assets: [Asset] }
-        let payload = try JSONDecoder().decode(Payload.self, from: data)
-
-        // "b42" -> 42
-        guard let build = Int(payload.tag_name.drop { !$0.isNumber }),
-              let current = currentBuild, build > current else { return nil }
-        let asset = { (name: String) in payload.assets.first { $0.name == name }?.browser_download_url }
-        // A newer release without our file (e.g. renamed asset) is not "up to date".
-        guard let package = asset(packageName), let checksums = asset(checksumName) else {
-            throw UpdateError.missingPackage
-        }
-        return Release(build: build, title: payload.name ?? payload.tag_name,
-                       package: package, checksums: checksums, page: payload.html_url)
+        return try ReleaseFeed.update(in: data, current: current, package: packageName)
     }
 
     // MARK: - Install
 
     func install() {
         guard case .available(let release) = state else { return }
-        state = .downloading(0)
+        state = .downloading(release, 0)
         Task {
             do {
                 let app = try await download(release)
-                state = .installing
+                state = .installing(release)
                 try Self.replaceRunningApp(with: app)
                 Self.relaunch()
             } catch {
@@ -160,7 +142,7 @@ final class Updater: ObservableObject {
             progress = task.progress.observe(\.fractionCompleted) { [weak self] p, _ in
                 let fraction = p.fractionCompleted
                 Task { @MainActor in
-                    if case .downloading = self?.state { self?.state = .downloading(fraction) }
+                    if case .downloading(let release, _) = self?.state { self?.state = .downloading(release, fraction) }
                 }
             }
             task.resume()

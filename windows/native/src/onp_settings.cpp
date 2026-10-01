@@ -11,6 +11,7 @@
 #include <sstream>
 
 #include "../third_party/json.hpp"
+#include "onp_text.h"
 
 namespace onp {
 
@@ -99,16 +100,8 @@ std::wstring localAppDataDir() {
     return d;
 }
 
-static std::string wideToUtf8(const std::wstring& w) {
-    if (w.empty()) return {};
-    int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), nullptr, 0, nullptr, nullptr);
-    std::string s(n, 0);
-    WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), s.data(), n, nullptr, nullptr);
-    return s;
-}
-
 std::string settingsJsonPath() {
-    return wideToUtf8(appDataDir()) + "\\settings.json";
+    return narrow(appDataDir()) + "\\settings.json";
 }
 
 static std::string exeDir() {
@@ -116,7 +109,7 @@ static std::string exeDir() {
     GetModuleFileNameW(nullptr, buf, MAX_PATH);
     std::wstring p = buf;
     size_t slash = p.find_last_of(L"\\/");
-    return wideToUtf8(slash == std::wstring::npos ? p : p.substr(0, slash));
+    return narrow(slash == std::wstring::npos ? p : p.substr(0, slash));
 }
 
 std::string dataRoot() {
@@ -188,7 +181,7 @@ void logInit() {
         RemoveDirectoryW(dir.c_str());     // only succeeds when nothing else is in it
         return;
     }
-    g_logPath = wideToUtf8(path);
+    g_logPath = narrow(path);
     logLine("=== BDONImmersiveHome started ===");
 }
 

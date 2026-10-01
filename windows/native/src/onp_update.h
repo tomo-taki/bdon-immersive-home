@@ -1,8 +1,8 @@
 // onp_update.h -- self-update from GitHub Releases (Updater.swift parity).
 //
-//   GET api.github.com/repos/<repo>/releases/latest
-//     tag "b<commit count>" > BDON_BUILD_NUMBER  -> an update exists
-//     asset BDONImmersiveHome-win-<arch>.zip + SHA256SUMS.txt
+//   GET api.github.com/repos/<repo>/releases -> onp_release.h: the newest
+//     release with BDONImmersiveHome-win-<arch>.zip + SHA256SUMS.txt whose tag
+//     "b<commit count>" beats BDON_BUILD_NUMBER, and its human-written summary
 //   download -> SHA-256 (bcrypt) -> tar.exe -xf -> run the new exe with
 //   --update: it quits this copy, copies itself over the install folder and
 //   starts the installed exe (the same path as the zip's install offer).
@@ -12,12 +12,19 @@
 
 namespace onp {
 
-enum class UpdateState { Idle, Checking, UpToDate, Available, Downloading, Installing, Failed, MissingPackage };
+enum class UpdateState { Idle, Checking, UpToDate, Available, Downloading, Installing, Failed };
 
 struct UpdateStatus {
     UpdateState state = UpdateState::Idle;
     std::string title;      // "2026.09.29 (5786b63)", UTF-8
+    std::string notes;      // the update's summary (release body), UTF-8
     int percent = 0;        // while downloading
+
+    // An update is on offer or being applied: title and notes describe it.
+    bool offered() const {
+        return state == UpdateState::Available || state == UpdateState::Downloading ||
+               state == UpdateState::Installing;
+    }
 };
 
 // Checks shortly after start and then daily; posts `message` to `notify`

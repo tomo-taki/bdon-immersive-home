@@ -1,7 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// Right-hand pane of the settings 정보 tab: version, licence notices and one
+/// Right-hand pane of the settings 정보 tab: version, update status (with the
+/// update's summary while one is on offer), licence notices and one
 /// bug-report / suggestion button that opens a Mail draft.
 struct AboutPane: View {
     static let contact = "tomo.taki@proton.me"
@@ -48,6 +49,9 @@ struct AboutPane: View {
             .padding(.vertical, 6)
 
             UpdateRow(updater: updater)
+            if let notes = updater.state.release?.notes, !notes.isEmpty {
+                ReleaseNotes(notes: notes)
+            }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("라이선스").font(Theme.font(13)).foregroundStyle(.white)
@@ -126,7 +130,7 @@ private struct UpdateRow: View {
         case .checking: return "확인 중…"
         case .upToDate: return "최신 버전입니다"
         case .available(let release): return "새 버전 \(release.title)"
-        case .downloading(let fraction): return "내려받는 중 \(Int(fraction * 100))%"
+        case .downloading(_, let fraction): return "내려받는 중 \(Int(fraction * 100))%"
         case .installing: return "설치 중…"
         case .failed(let message): return message
         }
@@ -147,5 +151,51 @@ private struct UpdateRow: View {
             Text(status).font(Theme.font(13, .semibold)).foregroundStyle(.white.opacity(0.85))
         }
         .frame(height: 40)
+    }
+}
+
+/// The update's summary as the human wrote it (the release body), in the
+/// licence box style. The box fits the text up to 120 pt, then scrolls.
+private struct ReleaseNotes: View {
+    let notes: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("업데이트 내용").font(Theme.font(13)).foregroundStyle(.white)
+            Rectangle().fill(Color.white.opacity(0.6)).frame(height: 1)
+            CappedHeight(limit: 120) {
+                ViewThatFits(in: .vertical) {
+                    text
+                    ScrollView { text }
+                }
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.22)))
+    }
+
+    private var text: some View {
+        Text(notes)
+            .font(Theme.font(12, .medium))
+            .foregroundStyle(.white.opacity(0.85))
+            .lineSpacing(2)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Offers its content at most `limit` points of height and takes the height
+/// the content picks; `.frame(maxHeight:)` would stretch short content to it.
+private struct CappedHeight: Layout {
+    let limit: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let height = min(proposal.height ?? limit, limit)
+        return subviews.first?.sizeThatFits(ProposedViewSize(width: proposal.width, height: height)) ?? .zero
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
     }
 }

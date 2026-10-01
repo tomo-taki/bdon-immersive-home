@@ -32,6 +32,7 @@
 #include "onp_stage.h"
 #include "onp_settings.h"
 #include "onp_spot.h"
+#include "onp_text.h"
 #include "onp_texture.h"
 
 using namespace onp;
@@ -54,6 +55,7 @@ std::vector<SpotIndexEntry> g_catalog;
 
 // Forward decls from settings_window.cpp.
 void openSettingsWindow(HINSTANCE hinst);
+void openSettingsAbout(HINSTANCE hinst);   // on the 정보 tab (update + its summary)
 void refreshSettingsWindow();
 void onSettingsChanged();               // called by settings window on any change
 
@@ -396,18 +398,10 @@ static void addTray(HWND hwnd, HINSTANCE hinst) {
 
 // ---- self-update (onp_update) ----
 
-static std::wstring widenUtf8(const std::string& s) {
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
-    std::wstring w(n, 0);
-    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
-    if (!w.empty() && w.back() == L'\0') w.pop_back();
-    return w;
-}
-
 static std::wstring updateMenuText() {
     UpdateStatus u = updateStatus();
     switch (u.state) {
-        case UpdateState::Available:   return L"\uC5C5\uB370\uC774\uD2B8 \uC124\uCE58 (" + widenUtf8(u.title) + L")";   // 업데이트 설치 (…)
+        case UpdateState::Available:   return L"\uC5C5\uB370\uC774\uD2B8 \uC124\uCE58 (" + widen(u.title) + L")";   // 업데이트 설치 (…)
         case UpdateState::Checking:    return L"\uC5C5\uB370\uC774\uD2B8 \uD655\uC778 \uC911\u2026";                  // 업데이트 확인 중…
         case UpdateState::Downloading: return L"\uC5C5\uB370\uC774\uD2B8 \uB0B4\uB824\uBC1B\uB294 \uC911 " + std::to_wstring(u.percent) + L"%";   // 내려받는 중 N%
         case UpdateState::Installing:  return L"\uC5C5\uB370\uC774\uD2B8 \uC124\uCE58 \uC911\u2026";                  // 업데이트 설치 중…
@@ -421,7 +415,7 @@ static UINT updateMenuFlags() {
     return MF_STRING | (busy ? MF_GRAYED : 0);
 }
 
-// One balloon per found release.
+// One balloon per found release; clicking it opens the 정보 tab with the summary.
 static void announceUpdate() {
     static std::string announced;
     UpdateStatus u = updateStatus();
@@ -431,8 +425,9 @@ static void announceUpdate() {
     n.uFlags = NIF_INFO;
     n.dwInfoFlags = NIIF_INFO;
     wcsncpy_s(n.szInfoTitle, L"BDON Immersive Home", _TRUNCATE);
-    std::wstring text = L"\uC0C8 \uBC84\uC804 " + widenUtf8(u.title) + L". \uD2B8\uB808\uC774 \uBA54\uB274\uC5D0\uC11C \uC124\uCE58\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.";
-    // 새 버전 …. 트레이 메뉴에서 설치할 수 있습니다.
+    std::wstring text = L"\uC0C8 \uBC84\uC804 " + widen(u.title) +
+                        L". \uB20C\uB7EC\uC11C \uC5C5\uB370\uC774\uD2B8 \uB0B4\uC6A9\uC744 \uD655\uC778\uD558\uC138\uC694.";
+    // 새 버전 …. 눌러서 업데이트 내용을 확인하세요.
     wcsncpy_s(n.szInfo, text.c_str(), _TRUNCATE);
     Shell_NotifyIconW(NIM_MODIFY, &n);
 }
@@ -440,9 +435,7 @@ static void announceUpdate() {
 static void showTrayMenu(HWND hwnd) {
     POINT p; GetCursorPos(&p);
     HMENU menu = CreatePopupMenu();
-    AppendMenuW(menu, MF_STRING, kCmdSettings, L"\xb0\xf0\xacbd \xc124\xc815\xa6\x2026"); // placeholder
-    // Use proper Korean strings.
-    ModifyMenuW(menu, kCmdSettings, MF_BYCOMMAND | MF_STRING, kCmdSettings, L"\uBC30\uACBD \uC124\uC815\u2026"); // 배경 설정…
+    AppendMenuW(menu, MF_STRING, kCmdSettings, L"\uBC30\uACBD \uC124\uC815\u2026"); // 배경 설정…
     AppendMenuW(menu, MF_STRING | (g_settings.showCharacters ? MF_CHECKED : 0), kCmdCharacters, L"\uCE90\uB9AD\uD130 \uD45C\uC2DC"); // 캐릭터 표시
     AppendMenuW(menu, MF_STRING | (g_settings.shuffle ? MF_CHECKED : 0), kCmdShuffle, L"\uC7A5\uBA74 \uC154\uD50C"); // 장면 셔플
     AppendMenuW(menu, MF_STRING | (onp::autostartEnabled() ? MF_CHECKED : 0), kCmdAutostart,
@@ -509,6 +502,7 @@ static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
         case WM_APP_TRAY:
             if (LOWORD(lparam) == WM_RBUTTONUP) showTrayMenu(hwnd);
             else if (LOWORD(lparam) == WM_LBUTTONUP) openSettingsWindow((HINSTANCE)GetWindowLongPtrW(hwnd, GWLP_HINSTANCE));
+            else if (LOWORD(lparam) == NIN_BALLOONUSERCLICK) openSettingsAbout((HINSTANCE)GetWindowLongPtrW(hwnd, GWLP_HINSTANCE));
             return 0;
         case WM_COMMAND:
             switch (LOWORD(wparam)) {
@@ -518,8 +512,13 @@ static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpara
                 case kCmdQuit: PostQuitMessage(0); break;
                 case kCmdAutostart: onp::setAutostart(!onp::autostartEnabled()); break;
                 case kCmdUpdate:
-                    if (updateStatus().state == UpdateState::Available) installUpdate();
-                    else checkForUpdate();
+                    // Install shows on the 정보 tab, with the update's summary (macOS parity).
+                    if (updateStatus().state == UpdateState::Available) {
+                        openSettingsAbout((HINSTANCE)GetWindowLongPtrW(hwnd, GWLP_HINSTANCE));
+                        installUpdate();
+                    } else {
+                        checkForUpdate();
+                    }
                     break;
             }
             return 0;
@@ -566,16 +565,9 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(cmdLine, &argc);
     if (argc >= 6 && wcscmp(argv[0], L"--snapshot") == 0) {
-        auto toUtf8 = [](LPWSTR w) {
-            int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
-            std::string s(n, 0);
-            WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), n, nullptr, nullptr);
-            if (!s.empty() && s.back() == '\0') s.pop_back();
-            return s;
-        };
-        std::string out = toUtf8(argv[1]);
+        std::string out = narrow(argv[1]);
         int w = _wtoi(argv[2]), h = _wtoi(argv[3]);
-        std::string spotId = toUtf8(argv[4]);
+        std::string spotId = narrow(argv[4]);
         bool chars = _wtoi(argv[5]) != 0;
         std::string err;
         if (!g_ctx.init(err)) { logLine("snapshot d3d init failed: " + err); return 2; }
