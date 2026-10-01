@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tools/release.sh -- publish the current build as a GitHub Release that the
-# apps' self-update reads (ReleaseFeed.swift, windows/native/src/onp_release.h).
+# apps' self-update reads (macos/Sources/ReleaseFeed.swift, windows/src/onp_release.h).
 #
 #   tag    b<commit count>          apps compare it with their own build number
 #   title  2026.09.29 (5786b63)
@@ -19,8 +19,8 @@
 #
 # Usage: tools/release.sh [--platforms mac,windows,android] [--notes FILE] [--dry-run]
 #   --notes defaults to dist/release-notes.md, removed once published.
-# Build first: ./build.sh && tools/make_dmg.sh && windows/native/build.sh both
-#              && windows/native/package.sh both && android/build.sh
+# Build first: macos/build.sh && macos/make_dmg.sh && windows/build.sh both
+#              && windows/package.sh both && android/build.sh
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -73,7 +73,7 @@ stage_mac() {
   local built date
   built="$(/usr/libexec/PlistBuddy -c 'Print :BDONCommit' "$plist")"
   [ "$built" = "$COMMIT" ] || fail "mac app was built from $built, HEAD is $COMMIT: rebuild"
-  [ "$dmg" -nt "$plist" ] || fail "$dmg is older than the app: run tools/make_dmg.sh"
+  [ "$dmg" -nt "$plist" ] || fail "$dmg is older than the app: run macos/make_dmg.sh"
   date="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")"
   cp "$dmg" "$OUT/"
   title "$date ($COMMIT)"
@@ -83,7 +83,7 @@ stage_windows() {
   local arch zip version
   for arch in x64 arm64; do
     zip="dist/windows/BDONImmersiveHome-win-$arch.zip"
-    version="$(cat "dist/windows/BDONImmersiveHome-win-$arch.version" 2>/dev/null || true)"   # package.sh
+    version="$(cat "dist/windows/BDONImmersiveHome-win-$arch.version" 2>/dev/null || true)"   # windows/package.sh
     [[ "$version" == *"($COMMIT)" ]] || fail "$zip was not built from $COMMIT: rebuild and package"
     cp "$zip" "$OUT/"
   done

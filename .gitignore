@@ -1,30 +1,23 @@
 # Build output
 .build/
 dist/
-windows/native/out/
-windows/web/out/
-windows/*/build-tmp/
+windows/out/
+windows/build-tmp/
 android/build-tmp/
 # Unused Filament experiment (the GLES renderer ships)
 android/app/src/main/materials/
 android/app/src/main/assets/materials/
-windows/web/node_modules/
-windows/web/app/node_modules/
 web/node_modules/
 legacy/native-proto/.build/
 legacy/native-proto/vendor/
 
-# Game data: re-fetched from the moenotes exports (tools/fetch_spot.py,
-# tools/build_spot.py), never committed.
-spot-src/
-Resources/web/spots/
-Resources/web/thumbs/
+# Game data: downloads (data/source), the Spots built from them and their
+# thumbnails (tools/spots/, macos/build.sh). Re-fetched, never committed.
+data/
 legacy/spots_vrfloor_only/
-windows/*/data/
-windows/web/app/web/
+windows/data/
 assets-src/
 pieces/
-windows/web/qa/
 
 # Third-party checkout (spine-runtimes 4.2, sparse spine-c): see vendor/README
 vendor/spine-runtimes/
@@ -36,26 +29,17 @@ prev/
 .DS_Store
 *.dmg
 *.zip
-windows/web/app/version.json
 
 # Not part of the build: local tool settings, the retired hand rig /
-# SpriteKit / WebKit / Electron tracks, and icon sources (the built
-# AppIcon.icns and menubar PNGs are committed).
+# SpriteKit / WebKit / Electron tracks (legacy/), and icon masters (the built
+# AppIcon.icns, menubar PNGs and app.ico are committed).
 .kiro/
-Resources/scene/
-Resources/web/app.js
-Resources/web/index.html
 legacy/
 rig/
 web/
-windows/web/
-windows/native/SPEC.md
-windows/native/tests/room_dump.cpp
-icon/AppIcon.iconset/
-icon/AppIcon_1024.png
-icon/bands/
-icon/menubar_master.png
-icon/tomori.png
+windows/SPEC.md
+shared/tests/room_dump.cpp
+assets/source/
 tools/atlas.py
 tools/compose.py
 tools/export_rig.py

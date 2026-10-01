@@ -34,11 +34,11 @@ CLANGXX="$TC/bin/aarch64-linux-android${API}-clang++"
 CLANG="$TC/bin/aarch64-linux-android${API}-clang"
 
 SPINE="$REPO/vendor/spine-runtimes/spine-c/spine-c"
-BRIDGE="$REPO/Sources/SpineBridge"
-WINSRC="$REPO/windows/native/src"          # shared headers: onp_math.h, onp_spot.h, onp_room.h
-THIRD="$REPO/windows/native/third_party"   # json.hpp, stb_image.h, stb_image_write.h
+BRIDGE="$REPO/shared/spine-bridge"
+SCENE="$REPO/shared/scene"                 # onp_math.h, onp_spot.h, onp_room.h (shared with Windows)
+THIRD="$REPO/shared/third_party"           # json.hpp, stb_image.h, stb_image_write.h
 CPP="$HERE/app/src/main/cpp"
-DATA="$REPO/Resources/web/spots"           # spot data packaged as assets
+DATA="$REPO/data/spots"                    # spot data packaged as assets
 
 OUT="$HERE/build-tmp"
 DIST="$REPO/dist/android"
@@ -52,10 +52,6 @@ done
 rm -rf "$OUT"
 mkdir -p "$OUT/obj" "$OUT/lib/$ABI" "$OUT/classes" "$OUT/apk" "$OUT/res-compiled" "$DIST"
 
-# --- stage the cpp third_party headers where the sources expect them ---
-mkdir -p "$CPP/third_party"
-cp "$THIRD/stb_image.h" "$THIRD/stb_image_write.h" "$CPP/third_party/"
-
 # ---------------------------------------------------------------------------
 # 1. Native library
 # ---------------------------------------------------------------------------
@@ -67,7 +63,7 @@ CXXFLAGS=(-std=c++17 -O2 -fPIC -fexceptions -frtti
           -Wno-nullability-completeness)
 # No logging unless DEBUG=1 (SPEC: no logging unless a debug flag).
 if [ "${DEBUG:-0}" = "1" ]; then CXXFLAGS+=(-DBDON_DEBUG); else CXXFLAGS+=(-DNDEBUG); fi
-INCLUDES=(-I "$BRIDGE/include" -I "$SPINE/include" -I "$WINSRC" -I "$THIRD" -I "$CPP")
+INCLUDES=(-I "$BRIDGE/include" -I "$SPINE/include" -I "$SCENE" -I "$THIRD" -I "$CPP")
 
 OBJS=()
 
@@ -177,11 +173,11 @@ mkdir -p "$STAGE/assets"
 cp -R "$DATA" "$STAGE/assets/spots"
 
 # Settings-UI images (not extracted to disk -- read from the APK on the UI thread):
-#   assets/thumbs/<id>.jpg  -- scene cards, downsampled from Resources/web/thumbs
+#   assets/thumbs/<id>.jpg  -- scene cards, downsampled from data/thumbs
 #                              (1280x720) to 400px-wide JPEG q80 to keep APK growth small
 #   assets/bands/<name>.png -- band chip logos (already ~3 KB each)
-THUMB_SRC="$REPO/Resources/web/thumbs"
-BAND_SRC="$REPO/Resources/web/bands"
+THUMB_SRC="$REPO/data/thumbs"
+BAND_SRC="$REPO/assets/bands"
 if [ -d "$THUMB_SRC" ]; then
   mkdir -p "$STAGE/assets/thumbs"
   for f in "$THUMB_SRC"/*.jpg; do

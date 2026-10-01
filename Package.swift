@@ -17,11 +17,11 @@ let package = Package(
             cSettings: [.unsafeFlags(["-w"])]
         ),
         // C glue: loading, per-frame update, and triangle output for Metal.
-        .target(name: "SpineBridge", dependencies: ["SpineC"], path: "Sources/SpineBridge"),
+        .target(name: "SpineBridge", dependencies: ["SpineC"], path: "shared/spine-bridge"),
         .executableTarget(
             name: "BDONImmersiveHome",
             dependencies: ["SpineBridge"],
-            path: "Sources/BDONImmersiveHome",
+            path: "macos/Sources",
             linkerSettings: [.linkedFramework("Metal"), .linkedFramework("MetalKit"), .linkedFramework("MetalFX")]
         ),
     ]

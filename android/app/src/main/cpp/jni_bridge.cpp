@@ -19,7 +19,7 @@
 #include "onp_spot.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "third_party/stb_image_write.h"
+#include "stb_image_write.h"
 
 using onp::Engine;
 using onp::EngineSettings;
