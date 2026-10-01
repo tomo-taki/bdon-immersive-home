@@ -17,6 +17,14 @@
     <string name="no_scenes">사용 가능한 장면이 없습니다. 데이터가 포함되지 않았을 수 있습니다.</string>
     <string name="chooser_unavailable">라이브 배경화면 설정 화면을 열 수 없습니다.</string>
 
+    <!-- PreviousApp: the pre-rename install is still on the device. -->
+    <string name="previous_app_title">기존 앱을 제거해 주세요</string>
+    <string name="previous_app_message">이번 버전은 새 앱으로 설치되어, 이전에 설치한 BDON Immersive Home이 따로 남아 있습니다.
+
+기존 앱을 제거한 뒤 이 앱에서 장면을 고르고 “배경화면으로 설정”을 눌러 다시 적용해 주세요. 기존 앱의 설정은 옮겨지지 않습니다.</string>
+    <string name="previous_app_remove">기존 앱 제거</string>
+    <string name="previous_app_close">닫기</string>
+
     <string name="tab_scene">배경</string>
     <string name="tab_detail">상세</string>
     <string name="tab_about">정보</string>

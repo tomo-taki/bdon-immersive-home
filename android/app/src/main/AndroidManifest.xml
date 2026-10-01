@@ -6,6 +6,13 @@
 
     <uses-feature android:name="android.software.live_wallpaper" android:required="true" />
     <uses-feature android:name="android.hardware.opengles.aep" android:required="false" />
+
+    <!-- PreviousApp: find the pre-rename install (com.bdon.immersivehome) and
+         open its uninstall prompt. -->
+    <queries>
+        <package android:name="com.bdon.immersivehome" />
+    </queries>
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
 
     <application

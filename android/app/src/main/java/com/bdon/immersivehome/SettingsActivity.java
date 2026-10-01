@@ -52,6 +52,7 @@ public final class SettingsActivity extends Activity {
     private LinearLayout level2Row;
     private ScrollView contentScroll;
     private LinearLayout content;
+    private android.app.AlertDialog previousAppNotice;   // PreviousApp
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -117,10 +118,17 @@ public final class SettingsActivity extends Activity {
         buildChrome();
         rebuildLevel2();
         rebuildContent();
+        // The pre-rename app is still installed: ask to remove it (PreviousApp).
+        previousAppNotice = PreviousApp.askToRemove(this);
     }
 
     @Override
     protected void onDestroy() {
+        // Recreated on rotation or fold: the new screen asks again unless 닫기 was tapped.
+        if (previousAppNotice != null) {
+            previousAppNotice.dismiss();
+            previousAppNotice = null;
+        }
         if (prefsChangeListener != null) {
             prefs.unregisterListener(prefsChangeListener);
             prefsChangeListener = null;
