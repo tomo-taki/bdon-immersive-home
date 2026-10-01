@@ -1,23 +1,30 @@
 package com.bdon.immersivehome;
 
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileLock;
+import java.nio.charset.StandardCharsets;
 
 /**
- * Extracts the bundled spot data (assets/spots/**) to internal storage on first
- * run. The native code (spine-c, the glTF/JSON loaders) reads real filesystem
- * paths via fopen, so the data must live on disk, not inside the APK. A version
- * marker skips re-extraction on later launches.
+ * Extracts the bundled spot data (assets/spots/**) to internal storage. The
+ * native code (spine-c, the glTF/JSON loaders) reads real filesystem paths via
+ * fopen, so the data must live on disk, not inside the APK. The marker holds
+ * the APK's install time: an update (which may bring new or changed Spots)
+ * extracts again, later launches of the same APK skip it.
  */
 final class Assets {
     private static final String SPOTS = "spots";
-    private static final String MARKER = "extracted.v1";
+    private static final String MARKER = "installed.stamp";
+    private static final String LOCK = "spots.lock";
 
     private Assets() {}
 
@@ -26,22 +33,60 @@ final class Assets {
         return new File(ctx.getFilesDir(), SPOTS).getAbsolutePath();
     }
 
-    /** Copy assets/spots to internal storage if not already done. Returns the spots dir. */
-    static String ensureExtracted(Context ctx) {
+    /**
+     * Copy assets/spots to internal storage unless this APK's copy is there.
+     * Returns the spots dir. The wallpaper engines and the settings screen all
+     * call it: one at a time, in this process (synchronized) and across
+     * processes (the file lock).
+     */
+    static synchronized String ensureExtracted(Context ctx) {
         File root = new File(ctx.getFilesDir(), SPOTS);
         File marker = new File(root, MARKER);
-        if (marker.exists()) {
-            return root.getAbsolutePath();
-        }
-        try {
-            deleteRecursive(root);   // clean any partial prior extraction
+        String stamp = installStamp(ctx);
+        try (RandomAccessFile lockFile = new RandomAccessFile(new File(ctx.getFilesDir(), LOCK), "rw");
+             FileLock lock = lockFile.getChannel().lock()) {
+            if (stamp.equals(readText(marker))) {
+                return root.getAbsolutePath();
+            }
+            deleteRecursive(root);   // the previous APK's copy, or a partial one
             root.mkdirs();
             copyAssetDir(ctx.getAssets(), SPOTS, root);
-            new FileOutputStream(marker).close();   // touch the marker
+            writeText(marker, stamp);
         } catch (IOException e) {
             throw new RuntimeException("asset extraction failed", e);
         }
         return root.getAbsolutePath();
+    }
+
+    /** Differs for every installed APK (first install or update). */
+    private static String installStamp(Context ctx) {
+        try {
+            return String.valueOf(ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).lastUpdateTime);
+        } catch (PackageManager.NameNotFoundException e) {
+            return "";   // our own package: does not happen; "" never matches a marker
+        }
+    }
+
+    private static String readText(File f) {
+        if (!f.exists()) return null;
+        try (InputStream in = new FileInputStream(f)) {
+            byte[] buf = new byte[(int) f.length()];
+            int n = 0;
+            while (n < buf.length) {
+                int r = in.read(buf, n, buf.length - n);
+                if (r < 0) break;
+                n += r;
+            }
+            return new String(buf, 0, n, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static void writeText(File f, String text) throws IOException {
+        try (OutputStream out = new FileOutputStream(f)) {
+            out.write(text.getBytes(StandardCharsets.UTF_8));
+        }
     }
 
     private static void copyAssetDir(AssetManager am, String assetPath, File dst) throws IOException {
