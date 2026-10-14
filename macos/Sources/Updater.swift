@@ -41,6 +41,7 @@ final class Updater: ObservableObject {
     @Published private(set) var state = State.idle
 
     private static let packageName = "BDONImmersiveHome.dmg"
+    private static let httpOK = 200
     private static let checkEvery: TimeInterval = 24 * 60 * 60
     private static let firstCheckDelay: TimeInterval =
         Double(ProcessInfo.processInfo.environment["BDON_UPDATE_DELAY"] ?? "") ?? 15
@@ -96,7 +97,7 @@ final class Updater: ObservableObject {
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        guard (response as? HTTPURLResponse)?.statusCode == httpOK else { throw URLError(.badServerResponse) }
         return try ReleaseFeed.update(in: data, current: current, package: packageName)
     }
 
@@ -112,7 +113,9 @@ final class Updater: ObservableObject {
                 try Self.replaceRunningApp(with: app)
                 Self.relaunch()
             } catch {
-                state = .failed("업데이트를 적용하지 못했습니다")
+                progress = nil
+                state = .failed(UpdateFailure.message(error))
+                EventLog.write("update failed: \(error)")
                 NSWorkspace.shared.open(release.page)
             }
         }
@@ -124,13 +127,18 @@ final class Updater: ObservableObject {
         try? FileManager.default.removeItem(at: work)
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
 
-        let (sums, _) = try await URLSession.shared.data(from: release.checksums)
-        guard let expected = Self.checksum(for: Self.packageName, in: sums) else { throw URLError(.cannotParseResponse) }
+        let (sums, response) = try await URLSession.shared.data(from: release.checksums)
+        guard (response as? HTTPURLResponse)?.statusCode == Self.httpOK else {
+            throw URLError(.badServerResponse)
+        }
+        guard let expected = Self.checksum(for: Self.packageName, in: sums) else {
+            throw UpdateFailure.missingChecksum
+        }
 
         let package = work.appendingPathComponent(Self.packageName)
         let downloaded: URL = try await withCheckedThrowingContinuation { continuation in
             let task = URLSession.shared.downloadTask(with: release.package) { url, response, error in
-                guard let url, (response as? HTTPURLResponse)?.statusCode == 200 else {
+                guard let url, (response as? HTTPURLResponse)?.statusCode == Self.httpOK else {
                     return continuation.resume(throwing: error ?? URLError(.badServerResponse))
                 }
                 // The temporary file is deleted when this handler returns.
@@ -151,7 +159,9 @@ final class Updater: ObservableObject {
         }
         progress = nil
 
-        guard try Self.sha256(of: downloaded) == expected else { throw URLError(.cannotDecodeContentData) }
+        guard try Self.sha256(of: downloaded) == expected else {
+            throw UpdateFailure.checksumMismatch
+        }
 
         let unpacked = work.appendingPathComponent("app")
         let volume = work.appendingPathComponent("volume")
@@ -159,13 +169,17 @@ final class Updater: ObservableObject {
                                           "-mountpoint", volume.path])
         defer { try? Self.run("/usr/bin/hdiutil", ["detach", volume.path, "-force"]) }
         let volumeApps = try FileManager.default.contentsOfDirectory(at: volume, includingPropertiesForKeys: nil)
-        guard let source = volumeApps.first(where: { $0.pathExtension == "app" }) else { throw URLError(.cannotOpenFile) }
+        guard let source = volumeApps.first(where: { $0.pathExtension == "app" }) else {
+            throw UpdateFailure.missingApp
+        }
         try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
         try Self.run("/usr/bin/ditto", [source.path, unpacked.appendingPathComponent(source.lastPathComponent).path])
         let apps = try FileManager.default.contentsOfDirectory(at: unpacked, includingPropertiesForKeys: nil)
-        guard let app = apps.first(where: { $0.pathExtension == "app" }),
-              Bundle(url: app)?.bundleIdentifier == Bundle.main.bundleIdentifier else {
-            throw URLError(.cannotOpenFile)
+        guard let app = apps.first(where: { $0.pathExtension == "app" }) else {
+            throw UpdateFailure.missingApp
+        }
+        guard Bundle(url: app)?.bundleIdentifier == Bundle.main.bundleIdentifier else {
+            throw UpdateFailure.identityMismatch
         }
         return app
     }
@@ -215,6 +229,8 @@ final class Updater: ObservableObject {
         task.arguments = arguments
         try task.run()
         task.waitUntilExit()
-        guard task.terminationStatus == 0 else { throw URLError(.cannotDecodeRawData) }
+        guard task.terminationStatus == 0 else {
+            throw UpdateFailure.toolFailed(URL(fileURLWithPath: tool).lastPathComponent)
+        }
     }
 }

@@ -38,6 +38,10 @@ BanG Dream! Our Notes의 이머시브 홈을 macOS, Windows, Android에서도 �
 | 저장 공간 | 1GB 이상                       | 1GB 이상                        | 1GB 이상                       | 1GB 이상                   |
 Intel Mac, 32비트 및 x86 Android 기기는 지원하지 않습니다.
 # 업데이트
+macOS의 2026.10.01 릴리즈(b27) 및 이전 버전은 앱 식별자가 달라 앱 내 업데이트가 실패합니다.
+한 번만 최신 DMG에서 앱을 Applications 폴더에 덮어쓰고 다시 실행해주세요. 기존 설정은 이전됩니다.
+이후 릴리즈는 `com.togawa.bdon-immersive-home` 식별자를 유지합니다.
+
 다음과 같은 경우에 업데이트가 배포됩니다.
 
 1. 버그 수정

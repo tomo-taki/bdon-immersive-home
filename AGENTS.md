@@ -26,5 +26,6 @@ The mac and Windows apps show each update's summary (the GitHub release body) in
 ## App id
 
 - `com.togawa.bdon-immersive-home` on the mac. `macos/build.sh` gives the dist/ build `<id>.dev` and `macos/make_dmg.sh` restores the release id, so a build left in the repo never stands in for the installed app.
+- Keep this id stable (`macos/app-id.txt`). The release gate checks both the DMG identity and its stable signing requirement. b27 and earlier need one manual DMG replacement because their updater rejects the renamed id.
 - `com.togawa.bdon_immersive_home` on Android (no `-` allowed); the Java namespace stays `com.bdon.immersivehome`.
 - Windows has no bundle-style id (registry and folders use the product name).

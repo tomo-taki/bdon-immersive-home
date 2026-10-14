@@ -71,6 +71,7 @@ title() { [ -n "$TITLE" ] || TITLE="$1"; }
 stage_mac() {
   local plist="dist/BDON Immersive Home.app/Contents/Info.plist" dmg="dist/BDONImmersiveHome.dmg"
   local built date
+  python3 macos/check_release.py --app "dist/BDON Immersive Home.app" --dmg "$dmg"
   built="$(/usr/libexec/PlistBuddy -c 'Print :BDONCommit' "$plist")"
   [ "$built" = "$COMMIT" ] || fail "mac app was built from $built, HEAD is $COMMIT: rebuild"
   [ "$dmg" -nt "$plist" ] || fail "$dmg is older than the app: run macos/make_dmg.sh"

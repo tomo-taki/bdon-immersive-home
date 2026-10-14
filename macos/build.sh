@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="BDON Immersive Home"
-BUNDLE_ID="com.togawa.bdon-immersive-home"
+BUNDLE_ID="$(cat "$ROOT/macos/app-id.txt")"
 # dist/ holds a dev build ("<id>.dev"); macos/make_dmg.sh puts the release id
 # back for the DMG. A build left here must never stand in for the installed
 # app: LaunchServices launches the highest version among apps sharing an id.
@@ -80,5 +80,5 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 # Ad-hoc signature so macOS will launch it locally.
-codesign --force --deep --sign - "$APP"
+python3 "$ROOT/macos/sign_app.py" "$APP"
 echo "Built: $APP"

@@ -15,6 +15,7 @@ VENV="$ROOT/work/venv-dmg"
 SCENE_ID="${DMG_SCENE:-30002}"     # Yumemita, second background
 
 [ -d "$APP" ] || { echo "build the app first: macos/build.sh"; exit 1; }
+python3 "$ROOT/macos/check_release.py" --app "$APP"
 
 if [ ! -x "$VENV/bin/dmgbuild" ]; then
     python3 -m venv "$VENV"
@@ -32,13 +33,14 @@ tiffutil -cathidpicheck "$WORK/background.png" "$WORK/background@2x.png" -out "$
 STAGED="$WORK/stage/$(basename "$APP")"
 mkdir -p "$WORK/stage"
 ditto "$APP" "$STAGED"
-DEV_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$STAGED/Contents/Info.plist")"
-/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${DEV_ID%.dev}" "$STAGED/Contents/Info.plist"
-codesign --force --deep --sign - "$STAGED"
+RELEASE_ID="$(cat "$ROOT/macos/app-id.txt")"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $RELEASE_ID" "$STAGED/Contents/Info.plist"
+python3 "$ROOT/macos/sign_app.py" "$STAGED"
 
 rm -f "$DMG"
 "$VENV/bin/dmgbuild" -s "$ROOT/macos/dmg/settings.py" \
     -D app="$STAGED" -D dmg_dir="$ROOT/macos/dmg" -D root="$ROOT" -D background="$WORK/background.tiff" \
     "BDON Immersive Home" "$DMG"
+python3 "$ROOT/macos/check_release.py" --app "$APP" --dmg "$DMG"
 rm -rf "$WORK"
 echo "Built: $DMG ($(du -h "$DMG" | cut -f1))"

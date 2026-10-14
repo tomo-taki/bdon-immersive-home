@@ -98,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shuffleItem?.state = settings.shuffle ? .on : .off
         shuffleItem?.title = settings.shuffle ? "장면 셔플 (\(settings.shuffleInterval.label))" : "장면 셔플"
         loginItem?.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        loginItem?.isEnabled = !AppIdentity.isDevBuild
     }
 
     // MARK: - Actions
@@ -137,6 +138,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleLogin() {
+        // A workspace copy must not become a second login item.
+        guard !AppIdentity.isDevBuild else { return }
         let service = SMAppService.mainApp
         do {
             if service.status == .enabled {
