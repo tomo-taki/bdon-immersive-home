@@ -95,6 +95,9 @@ func shiftedPose(_ base: SpotPose, px: Float, py: Float, _ s: SpotSituation, asp
     var pose = base
     pose.yaw = px >= 0 ? px * limit(s.maxRightShift, extraH) : px * limit(s.maxLeftShift, extraH)
     pose.pitch = py >= 0 ? py * limit(s.maxUpShift, extraV) : py * limit(s.maxDownShift, extraV)
+
+    // CalculateOrbitPosition uses the current forward, giving depth parallax.
+    pose.position = s.defaultPositionOffset.simd - lookDirection(pose) * s.orbitRatio
     return pose
 }
 

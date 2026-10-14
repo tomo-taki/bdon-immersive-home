@@ -23,3 +23,12 @@ echo "swift reference: $REF"
 
 "$CXX" -std=c++17 -O2 -I "$REPO/shared/third_party" -o "$TMP/host_test" "$HERE/host_test.cpp"
 "$TMP/host_test" "$SPOTS" "$REF"
+
+# Check the shipping Swift camera and its shared Windows/Android port.
+swiftc "$REPO/macos/Sources/Render/Math.swift" "$REPO/macos/Sources/Render/Spot.swift" \
+    "$HERE/camera_test.swift" -o "$TMP/swift_camera_test"
+"$TMP/swift_camera_test" "$SPOTS" "$TMP/camera-poses.json"
+
+"$CXX" -std=c++17 -O2 -I "$REPO/shared/third_party" \
+    "$HERE/camera_test.cpp" -o "$TMP/camera_test"
+"$TMP/camera_test" "$SPOTS" "$TMP/camera-poses.json"

@@ -215,6 +215,13 @@ inline SpotPose defaultPose(const SpotSituation& s, float fov) {
     return p;
 }
 
+inline Vec3 lookDirection(const SpotPose& pose) {
+    Vec3 f = normalize(pose.forward);
+    float yaw = std::atan2(f.x, f.z) + pose.yaw * kDeg;
+    float pitch = std::asin(std::fmax(-1.0f, std::fmin(1.0f, f.y))) + pose.pitch * kDeg;
+    return {std::sin(yaw) * std::cos(pitch), std::sin(pitch), std::cos(yaw) * std::cos(pitch)};
+}
+
 inline SpotPose shiftedPose(const SpotPose& base, float px, float py, const SpotSituation& s, float aspect) {
     float extraV = std::fmax(0.0f, (base.fov - s.fieldOfView) / 2.0f);
     auto halfH = [](float fov, float a) { return std::atan(std::tan(fov * kDeg / 2.0f) * a) / kDeg; };
@@ -223,14 +230,10 @@ inline SpotPose shiftedPose(const SpotPose& base, float px, float py, const Spot
     SpotPose pose = base;
     pose.yaw = px >= 0 ? px * limit(s.maxRightShift, extraH) : px * limit(s.maxLeftShift, extraH);
     pose.pitch = py >= 0 ? py * limit(s.maxUpShift, extraV) : py * limit(s.maxDownShift, extraV);
-    return pose;
-}
 
-inline Vec3 lookDirection(const SpotPose& pose) {
-    Vec3 f = normalize(pose.forward);
-    float yaw = std::atan2(f.x, f.z) + pose.yaw * kDeg;
-    float pitch = std::asin(std::fmax(-1.0f, std::fmin(1.0f, f.y))) + pose.pitch * kDeg;
-    return {std::sin(yaw) * std::cos(pitch), std::sin(pitch), std::cos(yaw) * std::cos(pitch)};
+    // CalculateOrbitPosition follows the current forward, including signed radii.
+    pose.position = s.defaultPositionOffset - lookDirection(pose) * s.orbitRatio;
+    return pose;
 }
 
 inline Vec3 rightHanded(const Vec3& v) { return {v.x, v.y, -v.z}; }
