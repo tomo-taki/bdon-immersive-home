@@ -48,6 +48,7 @@ final class SettingsNav: ObservableObject {
 struct SettingsView: View {
     @ObservedObject var settings: WallpaperSettings
     @ObservedObject var nav: SettingsNav
+    @ObservedObject var lockScreenAccess = LockScreenAccess.shared
 
     private static let tabHeight: CGFloat = 46
     private static let tabSpacing: CGFloat = 18
@@ -190,7 +191,7 @@ struct SettingsView: View {
                     case .display:
                         onOffPill(.characters, "캐릭터 표시", $settings.showCharacters)
                         onOffPill(.parallax, "커서 따라 시점 이동", $settings.cursorParallax)
-                        onOffPill(.lockScreen, "잠금 화면에도 표시", $settings.lockScreen)
+                        lockScreenPill
                     case .shuffle:
                         onOffPill(.shuffle, "장면 셔플", $settings.shuffle, badge: settings.shuffle ? "적용 중" : nil)
                         intervalPill
@@ -207,6 +208,7 @@ struct SettingsView: View {
         .padding(.horizontal, 30)
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .onAppear { lockScreenAccess.refresh() }
     }
 
     /// Pill that opens an OFF / ON choice (a tap never flips the value itself).
@@ -214,10 +216,36 @@ struct SettingsView: View {
                            badge: String? = nil) -> some View {
         OptionPill(title: title, value: value.wrappedValue ? "ON" : "OFF", badge: badge,
                    expanded: nav.expanded == option, action: { nav.toggle(option) }) {
-            HStack(spacing: 16) {
-                RadioChoice(title: "OFF", selected: !value.wrappedValue) { value.wrappedValue = false }
-                RadioChoice(title: "ON", selected: value.wrappedValue) { value.wrappedValue = true }
-                Spacer(minLength: 0)
+            onOffChoice(value)
+        }
+    }
+
+    private func onOffChoice(_ value: Binding<Bool>) -> some View {
+        HStack(spacing: 16) {
+            RadioChoice(title: "OFF", selected: !value.wrappedValue) { value.wrappedValue = false }
+            RadioChoice(title: "ON", selected: value.wrappedValue) { value.wrappedValue = true }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Says why the lock screen keeps its picture when macOS's wallpaper
+    /// cache is closed to the app (LockScreenAccess).
+    private var lockScreenPill: some View {
+        let blocked = settings.lockScreen && lockScreenAccess.blocked
+        return OptionPill(title: "잠금 화면에도 표시", value: settings.lockScreen ? "ON" : "OFF",
+                          badge: blocked ? "권한 필요" : nil,
+                          expanded: nav.expanded == .lockScreen, action: { nav.toggle(.lockScreen) }) {
+            VStack(alignment: .leading, spacing: 14) {
+                onOffChoice($settings.lockScreen)
+                if blocked {
+                    Text("macOS가 잠금 화면 이미지를 지우지 않고 계속 쌓아 두어서, 전체 디스크 접근 권한이 "
+                         + "없으면 잠금 화면 이미지를 바꾸지 않습니다. 권한을 허용하면 디스플레이마다 "
+                         + "현재와 직전 이미지만 남기고 정리합니다.")
+                        .font(Theme.font(12))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                    CapsuleButton(title: "시스템 설정 열기", action: LockScreenAccess.openSettings)
+                }
             }
         }
     }

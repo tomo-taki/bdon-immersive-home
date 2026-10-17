@@ -6,6 +6,9 @@ BanG Dream! Our Notes의 이머시브 홈을 macOS, Windows, Android에서도 �
 3. readme.txt 파일을 열고 텍스트 파일 내의 명령어를 터미널에 입력하여 앱을 격리 해제합니다.
 4. Spotlight 또는 Applications 폴더에서 BDON Immersive Home 앱을 실행합니다.
 5. 상단 민물고 아이콘을 통해 각종 설정을 진행할 수 있습니다.
+6. macOS 26 이상에서 **잠금 화면에도 표시**를 쓰려면 시스템 설정 > 개인정보 보호 및 보안 > 전체 디스크 접근 권한에서 BDON Immersive Home을 켭니다.
+    - macOS는 잠금 화면에 쓰인 이미지를 지우지 않고 계속 쌓아 둡니다. 권한이 있으면 앱이 디스플레이마다 현재와 직전 이미지만 남기고 나머지를 지웁니다.
+    - 권한이 없으면 저장 공간을 아끼기 위해 잠금 화면 이미지를 바꾸지 않습니다.
 ## Windows 
 1. 최신 릴리즈에서 PC의 아키텍처에 따라 파일을 다운로드합니다.
     - 일반 PC(Intel/AMD): `BDONImmersiveHome-win-x64.zip`

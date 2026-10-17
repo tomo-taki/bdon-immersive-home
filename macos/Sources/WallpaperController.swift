@@ -25,6 +25,7 @@ final class WallpaperController {
         observeSystem()
         observeQA()
         observeSettings()
+        observeLockScreenAccess()
         pointerTimer = Timer.scheduledTimer(withTimeInterval: Self.pointerInterval, repeats: true) {
             [weak self] _ in self?.updatePointer()
         }
@@ -94,6 +95,24 @@ final class WallpaperController {
                 }
             }
             .store(in: &subscriptions)
+    }
+
+    /// Tidy the stills now, which after an update also clears what earlier
+    /// builds left in macOS's cache, and again once access to it arrives.
+    private func observeLockScreenAccess() {
+        let access = LockScreenAccess.shared
+        access.onGranted = { [weak self] in
+            guard let self else { return }
+            LockScreenWallpaper.tidy(optionOn: self.settings.lockScreen)
+            if self.settings.lockScreen {
+                self.views.forEach { $0.requestSettle() }
+            }
+        }
+        access.refresh()
+        LockScreenWallpaper.tidy(optionOn: settings.lockScreen)
+        // Back from System Settings.
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil,
+                                               queue: .main) { _ in access.refresh() }
     }
 
     // MARK: - Windows
