@@ -20,7 +20,7 @@ The mac and Windows apps show each update's summary (the GitHub release body) in
 - `android/`: the Android live wallpaper (`build.sh`, `app/src/main/`).
 - `shared/`: code all three use: `spine-bridge/` (spine-c glue), `scene/` (Spot/room/camera C++ port), `third_party/` (json, stb), `tests/` (host parity tests: `shared/tests/run.sh`).
 - `assets/bands/`: band logos for the settings screens. `assets/source/` (not committed) holds icon masters.
-- `data/` (not committed): `source/` downloads, `spots/` and `thumbs/` built by `tools/spots/` and `macos/build.sh`, `cache/` and `venv/` of `tools/spots/export_spot.py`.
+- `data/` (not committed): `source/` downloads, `spots/` and `thumbs/` built by `tools/spots/` and `macos/build.sh`, `cache/` and `venv/` of `tools/spots/export_spot.py`, `local_spots.json` and `update_catalog.log` of `tools/spots/update_catalog.py`.
 - `tools/`: `release.sh` and the Spot data pipeline (`tools/spots/`).
 
 ## New Spots from the local catalog
@@ -30,6 +30,7 @@ The mac and Windows apps show each update's summary (the GitHub release body) in
 - Set up `data/venv` once: `python3.12 -m venv data/venv && data/venv/bin/pip install nnnotes==0.1.4`. Keep the pin: 0.1.4 is the exporter the story site's files came from.
 - A situation without a MasterHomeSpot row has no Spot id or name yet; `--id N` exports a preview. Never release one: delete its line from `local_spot_ids.txt` and its `data/spots` and `data/thumbs` files first.
 - Once the story site has the Spot, `build_spot.py` builds it from the site and skips the local export.
+- `python3 tools/spots/update_catalog.py --install` (a LaunchAgent; `--uninstall` removes it) moves the service to the region's current release at login and every 6 hours, and notifies new situations and previews that the master data now lists. It lets a release refresh the catalog and cancels the release's export of every asset, so keep the service's `version_poll_secs` at 0.
 
 ## App id
 

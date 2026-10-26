@@ -27,9 +27,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
-import subprocess
 import tomllib
 from pathlib import Path
 
@@ -40,9 +38,9 @@ from nnnotes.catalog import Catalog
 from nnnotes.jsonio import write_json
 from nnnotes.unity import SceneGraph, deref, strip_pptrs
 
-from local_spots import LOCAL_IDS, ROOT, SERVICE, SITUATION_KEY, master_table, snapshot
+from fetch_spot import get
+from local_spots import LOCAL_IDS, ROOT, SERVICE, SITUATION_KEY, master_table, moenotes_dir, snapshot
 
-CONFIG_MOUNT = "/etc/moenotes-assets/config.toml"  # compose.yaml of the local MoeNotes folder
 # Script classes by fields that only they serialize (a class matches when it has all of them).
 CLASSES = {
     "SpotSituationSettings": {"backgroundPosition", "originalOffset", "orbitRatio", "fieldOfView"},
@@ -57,24 +55,6 @@ CLASSES = {
 SCENE_CAMERA = {"near clip plane": 0.30000001192092896, "far clip plane": 1000.0, "field of view": 19.0}
 
 
-def moenotes_dir(arg: str | None) -> Path:
-    """The local MoeNotes folder (compose.yaml, config.toml, moenotes-assets/): --moenotes, $MOENOTES_LOCAL, else
-    the folder whose config.toml the running moenotes-assets container mounts."""
-    if arg or os.environ.get("MOENOTES_LOCAL"):
-        return Path(arg or os.environ["MOENOTES_LOCAL"]).expanduser()
-    fmt = "{{range .Mounts}}{{if eq .Destination \"%s\"}}{{.Source}}{{end}}{{end}}" % CONFIG_MOUNT
-    try:
-        ids = subprocess.run(["docker", "ps", "-q", "--filter", f"volume={CONFIG_MOUNT}"],
-                             capture_output=True, text=True, check=True).stdout.split()
-        source = subprocess.run(["docker", "inspect", "--format", fmt, *ids[:1]],
-                                capture_output=True, text=True, check=True).stdout.strip() if ids else ""
-    except (OSError, subprocess.CalledProcessError):
-        source = ""
-    if not source:
-        raise SystemExit("no running moenotes-assets container: give the local MoeNotes folder with --moenotes")
-    return Path(source.removeprefix("/host_mnt")).parent   # Docker Desktop names host paths /host_mnt/...
-
-
 def bundle_settings(folder: Path) -> tuple[str, BundleKey]:
     """The CDN root (config.toml cdn_root) and bundle key (CSharp/Crypto.cs) of the service."""
     cdn = tomllib.loads((folder / "config.toml").read_text())["cdn_root"]
@@ -86,13 +66,27 @@ def bundle_settings(folder: Path) -> tuple[str, BundleKey]:
     return cdn, BundleKey(bytes.fromhex(key[1]), bytes.fromhex(seed[1]))
 
 
-def open_catalog(snap: dict, cache: Path, cdn: str, key: BundleKey) -> Catalog:
-    """The catalog file of the service's snapshot, downloaded into `cache` once: the one whose SHA-256 is the
-    snapshot's. A cached catalog_main that is not is downloaded again (the service may have refreshed since)."""
+def catalog_versions(service: str, snap: dict) -> list[str]:
+    """The catalog file versions the snapshot may be of, likeliest first: the release whose catalog refresh made it
+    (update_catalog.py; a release puts catalog_<resource version> in the configured scope, main), the service's
+    other releases of its region, then its scope's own (a manual refresh)."""
+    try:
+        releases = json.loads(get(service.rstrip("/") + "/versions/index.json"))["regions"].get(snap["region"], [])
+    except OSError:                         # no release yet
+        releases = []
+    made = [r for r in releases if (r.get("locales") or {}).get(snap["locale"], {}).get("snapshot") == snap["snapshot"]]
+    return list(dict.fromkeys([*(r.get("catalog_version") or r["resource_version"] for r in made + releases),
+                               snap["version"]]))
+
+
+def open_catalog(snap: dict, versions: list[str], cache: Path, cdn: str, key: BundleKey) -> Catalog:
+    """The catalog file of the service's snapshot, downloaded into `cache` once: the one of `versions` whose
+    SHA-256 is the snapshot's. A cached catalog_main that is not is downloaded again (the service may have
+    refreshed since)."""
     def matches(cat: Catalog) -> bool:
         return hashlib.sha256(cat.sources()["remote"]).hexdigest() == snap["content_sha256"]
 
-    for version in dict.fromkeys(v for v in (snap.get("catalog_version"), snap["version"]) if v):
+    for version in versions:
         cat = Catalog.load(snap["locale"], cache, cdn=cdn, bundle_key=key, version=version)
         if not matches(cat) and version == "main":
             Catalog.cache_file(snap["locale"], cache).unlink()
@@ -271,7 +265,7 @@ def main() -> None:
 
     snap = snapshot(args.service, args.region)
     cdn, key = bundle_settings(moenotes_dir(args.moenotes))
-    cat = open_catalog(snap, args.cache / snap["region"], cdn, key)
+    cat = open_catalog(snap, catalog_versions(args.service, snap), args.cache / snap["region"], cdn, key)
     tables = {t: master_table(snap["region"], t) for t in
               ("MasterHomeSpot", "MasterText", "MasterStoryHomeSpotTapTalkEpisode")}
     by_id = {str(r["_id"]): r for r in tables["MasterHomeSpot"]}

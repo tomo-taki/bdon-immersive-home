@@ -27,6 +27,7 @@ work/
 prev/
 .vitest-tmp/
 .DS_Store
+__pycache__/
 *.dmg
 *.zip
 
