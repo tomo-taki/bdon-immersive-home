@@ -2,7 +2,8 @@
 """Package Home Spot situations for the wallpaper's web renderer.
 
 Input: folders written by fetch_spot.py (one per Home Talk advId) holding
-host.json and spot/{room.glb, room.json, spot.json, spine/*}.
+host.json and spot/{room.glb, room.json, spot.json, spine/*}, and the same
+layout written by export_spot.py (one per situation of the local catalog).
 Output (<out_dir>):
   index.json                      [{id, name, band, room, dir, characters}]
   <room>/room.glb                 shared by every situation of that room
@@ -16,8 +17,10 @@ spot.json (Unity world space, left-handed, column-major matrices):
   roomNodes  per glb node: active after the situation's Prepare
   characters [{name, skeleton, atlas, scale, world, animation, loop, order}]
 
-Usage: build_spot.py <out_dir> <spot_ids.txt> <fetched_root>
-spot_ids.txt lines: "<spotId> <advId>".
+Usage: build_spot.py <out_dir> <spot_ids.txt> <fetched_root> [<local_spot_ids.txt>...]
+spot_ids.txt lines: "<spotId> <advId>"; a local list's: "<spotId> <situation>",
+folders of the same root. A Spot id of an earlier list wins: once the story
+site has a Spot, its export is used instead of the local one.
 """
 from __future__ import annotations
 
@@ -29,6 +32,9 @@ from pathlib import Path
 
 # Room prefix home_00N_* -> band.
 BANDS = {1: "MyGO!!!!!", 2: "Ave Mujica", 3: "夢限大みゅーたいぷ", 4: "millsage", 5: "一家Dumb Rock!"}
+# spot.json "name" (MasterText columns) -> the story index's language codes.
+LANGUAGES = {"japanese": "ja", "english": "en", "traditionalChinese": "zh-Hant", "simplifiedChinese": "zh-Hans",
+             "korean": "ko"}
 
 
 def resolve_skeleton(char: dict, skeletons: dict):
@@ -109,7 +115,8 @@ def build(spot_id: str, src: Path, out: Path, stories: dict) -> dict | None:
     if not (out / room / "room.glb").exists():
         shutil.copy(spot_dir / "room.glb", out / room / "room.glb")
 
-    names = stories.get(spot_id, {})
+    # A Spot the story index lacks (export_spot.py) takes its names from spot.json: the same MasterText rows.
+    names = stories.get(spot_id) or {LANGUAGES[k]: v for k, v in (spot.get("name") or {}).items() if v}
     band = BANDS.get(int(room.split("_")[1]), "")
     note = f" (skipped: {', '.join(skipped)})" if skipped else ""
     print(f"{spot_id} {room}: {len(characters)} characters{note}")
@@ -139,14 +146,20 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     stories = spot_names(root / "stories.json")
 
-    index = []
-    for line in ids_file.read_text().split("\n"):
-        if not line.strip():
-            continue
-        spot_id, adv_id = line.split()
-        entry = build(spot_id, root / adv_id, out, stories)
-        if entry:
-            index.append(entry)
+    index, built = [], {}
+    for ids in [ids_file, *map(Path, sys.argv[4:])]:
+        for line in ids.read_text().split("\n"):
+            if not line.strip():
+                continue
+            spot_id, folder = line.split()
+            if spot_id in built:
+                print(f"{spot_id} {folder}: skipped, built from {built[spot_id]}")
+                continue
+            entry = build(spot_id, root / folder, out, stories)
+            if entry:
+                index.append(entry)
+                built[spot_id] = folder
+    index.sort(key=lambda e: int(e["id"]))
     (out / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1))
     print(f"{len(index)} situations")
 

@@ -15,12 +15,18 @@ cd "$ROOT"
 
 # Spot data (room.glb, spot.json, Spine 4.2 skeletons) from the moenotes
 # Home Talk exports (downloads in data/source): one Talk per Home Spot
-# (see tools/spots/list_spots.py).
+# (see tools/spots/list_spots.py). Spots exported from the local catalog
+# before the story site has them (tools/spots/export_spot.py) are listed in
+# data/source/local_spot_ids.txt; a newer list rebuilds the index.
+LOCAL_SPOTS=data/source/local_spot_ids.txt
+[ -f "$LOCAL_SPOTS" ] || LOCAL_SPOTS=""
 if [ ! -f data/spots/index.json ]; then
     python3 tools/spots/list_spots.py data/source
     awk '{print $2}' data/source/spot_ids.txt | xargs -P 8 -I{} sh -c \
         '[ -f data/source/{}/host.json ] || python3 tools/spots/fetch_spot.py {} data/source/{}'
-    python3 tools/spots/build_spot.py data/spots data/source/spot_ids.txt data/source
+fi
+if [ ! -f data/spots/index.json ] || [ "$LOCAL_SPOTS" -nt data/spots/index.json ]; then
+    python3 tools/spots/build_spot.py data/spots data/source/spot_ids.txt data/source ${LOCAL_SPOTS:+"$LOCAL_SPOTS"}
 fi
 
 # Renderer: native Metal (macos/Sources/Render + shared/spine-bridge over
@@ -36,9 +42,15 @@ elif [ -n "$missing" ]; then
     # shellcheck disable=SC2086
     .build/release/BDONImmersiveHome --coverage $missing
 fi
-# Settings thumbnails (with and without characters), rendered by the app itself.
-if [ ! -f data/thumbs/30001_bg.jpg ] || [ "${REBUILD_THUMBS:-0}" = 1 ]; then
+# Settings thumbnails (with and without characters), rendered by the app itself:
+# Spots without them, or all of them with REBUILD_THUMBS=1.
+spot_ids="$(python3 -c "import json; print(' '.join(s['id'] for s in json.load(open('data/spots/index.json'))))")"
+no_thumbs="$(for id in $spot_ids; do [ -f "data/thumbs/${id}_bg.jpg" ] || echo "$id"; done)"
+if [ "${REBUILD_THUMBS:-0}" = 1 ]; then
     tools/spots/thumbs.sh .build/release/BDONImmersiveHome
+elif [ -n "$no_thumbs" ]; then
+    # shellcheck disable=SC2086
+    tools/spots/thumbs.sh .build/release/BDONImmersiveHome $no_thumbs
 fi
 
 rm -rf "$APP"

@@ -1,17 +1,19 @@
 #!/bin/bash
 # Settings thumbnails (data/thumbs/<id>.jpg and <id>_bg.jpg without
 # characters), rendered offscreen by the app's own Metal renderer.
-# Usage: tools/spots/thumbs.sh [binary]   (default .build/release/BDONImmersiveHome)
+# Usage: tools/spots/thumbs.sh [binary [id...]]
+#   (default .build/release/BDONImmersiveHome, every Spot of data/spots/index.json)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BIN="${1:-$ROOT/.build/release/BDONImmersiveHome}"
+[ $# -eq 0 ] || shift
 OUT="$ROOT/data/thumbs"
 TMP="${TMPDIR:-/tmp}/bdon-thumbs.$$"
 mkdir -p "$OUT" "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 
 cd "$ROOT"
-ids=$(python3 -c "import json; print(' '.join(s['id'] for s in json.load(open('data/spots/index.json'))))")
+ids="${*:-$(python3 -c "import json; print(' '.join(s['id'] for s in json.load(open('data/spots/index.json'))))")}"
 for id in $ids; do
     "$BIN" --snapshot "$TMP/$id.png" 1280 720 "$id" 1 >/dev/null
     "$BIN" --snapshot "$TMP/${id}_bg.png" 1280 720 "$id" 0 >/dev/null

@@ -20,8 +20,16 @@ The mac and Windows apps show each update's summary (the GitHub release body) in
 - `android/`: the Android live wallpaper (`build.sh`, `app/src/main/`).
 - `shared/`: code all three use: `spine-bridge/` (spine-c glue), `scene/` (Spot/room/camera C++ port), `third_party/` (json, stb), `tests/` (host parity tests: `shared/tests/run.sh`).
 - `assets/bands/`: band logos for the settings screens. `assets/source/` (not committed) holds icon masters.
-- `data/` (not committed): `source/` downloads, `spots/` and `thumbs/` built by `tools/spots/` and `macos/build.sh`.
+- `data/` (not committed): `source/` downloads, `spots/` and `thumbs/` built by `tools/spots/` and `macos/build.sh`, `cache/` and `venv/` of `tools/spots/export_spot.py`.
 - `tools/`: `release.sh` and the Spot data pipeline (`tools/spots/`).
+
+## New Spots from the local catalog
+
+- The local MoeNotes Viewer reads a moenotes-assets service (Docker, 127.0.0.1:8091). `python3 tools/spots/local_spots.py` lists the situations of its catalog that `data/spots` lacks, with the Spot id and name the region's master data gives them.
+- `data/venv/bin/python tools/spots/export_spot.py <situation | Spot id>` writes one into `data/source/<situation>/` in the story site's layout and lists it in `data/source/local_spot_ids.txt`. The next `macos/build.sh` adds it to `data/spots` with its cover and thumbnails; the Windows and Android builds take them from there.
+- Set up `data/venv` once: `python3.12 -m venv data/venv && data/venv/bin/pip install nnnotes==0.1.4`. Keep the pin: 0.1.4 is the exporter the story site's files came from.
+- A situation without a MasterHomeSpot row has no Spot id or name yet; `--id N` exports a preview. Never release one: delete its line from `local_spot_ids.txt` and its `data/spots` and `data/thumbs` files first.
+- Once the story site has the Spot, `build_spot.py` builds it from the site and skips the local export.
 
 ## App id
 
