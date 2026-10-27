@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Package Home Spot situations for the wallpaper's web renderer.
 
-Input: folders written by fetch_spot.py (one per Home Talk advId) holding
-host.json and spot/{room.glb, room.json, spot.json, spine/*}, and the same
-layout written by export_spot.py (one per situation of the local catalog).
+Input: folders written by export_spot.py (one per situation of the local
+catalog) holding host.json and spot/{room.glb, room.json, spot.json, spine/*}.
 Output (<out_dir>):
   index.json                      [{id, name, band, room, dir, characters}]
   <room>/room.glb                 shared by every situation of that room
@@ -17,10 +16,8 @@ spot.json (Unity world space, left-handed, column-major matrices):
   roomNodes  per glb node: active after the situation's Prepare
   characters [{name, skeleton, atlas, scale, world, animation, loop, order}]
 
-Usage: build_spot.py <out_dir> <spot_ids.txt> <fetched_root> [<local_spot_ids.txt>...]
-spot_ids.txt lines: "<spotId> <advId>"; a local list's: "<spotId> <situation>",
-folders of the same root. A Spot id of an earlier list wins: once the story
-site has a Spot, its export is used instead of the local one.
+Usage: build_spot.py <out_dir> <spot_ids.txt> <source_root>
+spot_ids.txt lines: "<spotId> <situation>", folders of <source_root>.
 """
 from __future__ import annotations
 
@@ -32,9 +29,6 @@ from pathlib import Path
 
 # Room prefix home_00N_* -> band.
 BANDS = {1: "MyGO!!!!!", 2: "Ave Mujica", 3: "夢限大みゅーたいぷ", 4: "millsage", 5: "一家Dumb Rock!"}
-# spot.json "name" (MasterText columns) -> the story index's language codes.
-LANGUAGES = {"japanese": "ja", "english": "en", "traditionalChinese": "zh-Hant", "simplifiedChinese": "zh-Hans",
-             "korean": "ko"}
 
 
 def resolve_skeleton(char: dict, skeletons: dict):
@@ -45,8 +39,8 @@ def resolve_skeleton(char: dict, skeletons: dict):
     return next((s for name, s in skeletons.items() if name.lower().endswith(suffix.lower())), None)
 
 
-def build(spot_id: str, src: Path, out: Path, stories: dict) -> dict | None:
-    spot_dir = src / "spot" if (src / "spot").exists() else src
+def build(spot_id: str, src: Path, out: Path) -> dict | None:
+    spot_dir = src / "spot"
     spot = json.loads((spot_dir / "spot.json").read_text())
     home = json.loads((src / "host.json").read_text())["home"]
     room = json.loads((spot_dir / "room.json").read_text())["backgroundKey"].split("/")[1]
@@ -101,11 +95,10 @@ def build(spot_id: str, src: Path, out: Path, stories: dict) -> dict | None:
             if line.strip().endswith(".png"):
                 shutil.copy(spot_dir / "spine" / line.strip(), target / line.strip())
 
-    cam = home["sceneRoot"]["sceneCamera"]["camera"]
     scene = {
         "name": home["situation"]["name"],
         "situation": spot["situationSettings"],
-        "camera": {"near": cam["near clip plane"], "far": cam["far clip plane"], "fieldOfView": cam["field of view"]},
+        "camera": home["camera"],
         "roomRoot": home["roomRoot"],
         "roomNodes": [node["active"] for node in home["roomNodes"]],
         "characters": characters,
@@ -115,15 +108,13 @@ def build(spot_id: str, src: Path, out: Path, stories: dict) -> dict | None:
     if not (out / room / "room.glb").exists():
         shutil.copy(spot_dir / "room.glb", out / room / "room.glb")
 
-    # A Spot the story index lacks (export_spot.py) takes its names from spot.json: the same MasterText rows.
-    names = stories.get(spot_id) or {LANGUAGES[k]: v for k, v in (spot.get("name") or {}).items() if v}
+    names = spot.get("name") or {}
     band = BANDS.get(int(room.split("_")[1]), "")
     note = f" (skipped: {', '.join(skipped)})" if skipped else ""
     print(f"{spot_id} {room}: {len(characters)} characters{note}")
     return {
         "id": spot_id,
-        "name": names.get("ko") or names.get("ja") or scene["name"],
-        "names": names,
+        "name": names.get("korean") or names.get("japanese") or scene["name"],
         "band": band,
         "room": room,
         "dir": f"{room}/{spot_id}",
@@ -131,34 +122,18 @@ def build(spot_id: str, src: Path, out: Path, stories: dict) -> dict | None:
     }
 
 
-def spot_names(stories_path: Path) -> dict:
-    names = {}
-    for story in json.loads(stories_path.read_text())["stories"]:
-        for group in story.get("groups", []):
-            spot = group.get("spot")
-            if spot:
-                names.setdefault(str(spot["id"]), spot["names"])
-    return names
-
-
 def main() -> None:
     out, ids_file, root = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
     out.mkdir(parents=True, exist_ok=True)
-    stories = spot_names(root / "stories.json")
 
-    index, built = [], {}
-    for ids in [ids_file, *map(Path, sys.argv[4:])]:
-        for line in ids.read_text().split("\n"):
-            if not line.strip():
-                continue
-            spot_id, folder = line.split()
-            if spot_id in built:
-                print(f"{spot_id} {folder}: skipped, built from {built[spot_id]}")
-                continue
-            entry = build(spot_id, root / folder, out, stories)
-            if entry:
-                index.append(entry)
-                built[spot_id] = folder
+    index = []
+    for line in ids_file.read_text().split("\n"):
+        if not line.strip():
+            continue
+        spot_id, folder = line.split()
+        entry = build(spot_id, root / folder, out)
+        if entry:
+            index.append(entry)
     index.sort(key=lambda e: int(e["id"]))
     (out / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1))
     print(f"{len(index)} situations")

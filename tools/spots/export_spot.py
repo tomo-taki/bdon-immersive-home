@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-"""Export Home Spot situations of the local catalog in the layout fetch_spot.py writes.
+"""Export Home Spot situations of the local catalog for build_spot.py.
 
-local_spots.py lists the situations of the local moenotes-assets service (the local MoeNotes Viewer's catalog) that
-the app lacks. For each one given this writes data/source/<situation>/ as fetch_spot.py writes a Home Talk's host/
-folder, so build_spot.py packages it unchanged:
-  host.json       the part of the story host's `home` (ournotes.story-host/1) that build_spot.py reads
+The situations are those of the Ournotes asset service's catalog (local_spots.py). For each one this writes
+data/source/<situation>/:
+  host.json       the room placement and drawing order of the Spot's home screen that build_spot.py reads
   spot/room.glb   the background, with room.json
   spot/spot.json  the situation, with spot/spine/*
-and lists it in data/source/local_spot_ids.txt as "<spotId> <situation>".
+and lists it in data/source/spot_ids.txt as "<spotId> <situation>". --all exports every Spot of the master data and
+the previews the list has.
 
-The files are made by nnnotes 0.1.4 (StarMoe-org/nnnotes), the exporter of the moenotes story site, from the
-service's own catalog file (checked against its snapshot's SHA-256). Bundles come from the CDN in the service's
-config.toml, decrypted with the key in its source (moenotes-assets/CSharp/Crypto.cs), and are cached in data/cache.
+The files are made by nnnotes 0.1.4 (StarMoe-org/nnnotes) from the service's own catalog file (checked against its
+snapshot's SHA-256). The catalog and bundles come from the region's Bilibili CDN that the watcher reports, decrypted
+with the bundle key in the service's source (backend/CSharp/Crypto.cs), and are cached in data/cache.
 `nnnotes spot` reads a MonoBehaviour's class from its MonoScript, which ships only in the game's APK
 (shared_monoscripts.bundle); here a class is told by the fields only it serializes (CLASSES), so no APK is needed.
 
-The Spot id, MasterHomeSpot row, names and tap talks come from the region's master data, as in local_spots.py.
+The Spot id, MasterHomeSpot row and names come from the region's master data, as in local_spots.py.
 A situation without a MasterHomeSpot row needs --id: a preview with no names, not for a release.
 
 Needs Python 3.11+ with nnnotes 0.1.4 (data/ is not committed):
   python3.12 -m venv data/venv && data/venv/bin/pip install nnnotes==0.1.4
-Usage: data/venv/bin/python tools/spots/export_spot.py [--moenotes DIR] [--id N] <situation | Spot id>...
+Usage: data/venv/bin/python tools/spots/export_spot.py [--ournotes DIR] [--id N] <situation | Spot id>... | --all
 """
 from __future__ import annotations
 
@@ -38,8 +38,8 @@ from nnnotes.catalog import Catalog
 from nnnotes.jsonio import write_json
 from nnnotes.unity import SceneGraph, deref, strip_pptrs
 
-from fetch_spot import get
-from local_spots import LOCAL_IDS, ROOT, SERVICE, SITUATION_KEY, master_table, moenotes_dir, snapshot
+from local_spots import (ROOT, SERVICE, SITUATION_KEY, SPOT_IDS, WATCHER, exports, game_state, get, master_table,
+                         ournotes_dir, snapshot)
 
 # Script classes by fields that only they serialize (a class matches when it has all of them).
 CLASSES = {
@@ -50,33 +50,57 @@ CLASSES = {
     "SkeletonDataAsset": {"skeletonJSON", "atlasAssets"},
     "SpotBackground": {"_situationObjects"},
 }
-# The Spot scene's camera (EmbScene/Spot, SceneRoot/SceneCamera). The scene ships in the APK; every Spot of the
-# story site has these values.
-SCENE_CAMERA = {"near clip plane": 0.30000001192092896, "far clip plane": 1000.0, "field of view": 19.0}
+# The Spot scene's camera (EmbScene/Spot, SceneRoot/SceneCamera). The scene ships in the APK, not in the catalog.
+SCENE_CAMERA = {"near": 0.30000001192092896, "far": 1000.0, "fieldOfView": 19.0}
+
+
+def without_spine(drawn_meshes):
+    """room.drawn_meshes without the objects a Spine shader draws. A background's Spine object (the millsage cafe's
+    04_BG_table and 04_BG_chair) stores only its prefab's preview mesh, and the Spine runtime makes the real one each
+    frame: room.glb and roomNodes leave them out, and background_spine makes them Spine characters."""
+    shaders: dict = {}
+
+    def is_spine(pptr) -> bool:
+        if not pptr.path_id:
+            return False
+        mat = pptr.deref()
+        if room.object_key(mat) not in shaders:
+            shader = deref(mat, mat.read_typetree()["m_Shader"]).read_typetree()
+            shaders[room.object_key(mat)] = "/Spine/" in shader["m_ParsedForm"]["m_Name"]
+        return shaders[room.object_key(mat)]
+
+    def drawn(mf_by_go, mr_by_go, graph, on_null_mesh):
+        for tf_pid, mesh, mats in drawn_meshes(mf_by_go, mr_by_go, graph, on_null_mesh):
+            if not any(map(is_spine, mats)):
+                yield tf_pid, mesh, mats
+    return drawn
+
+
+# room.extract_room (room.glb) and placed_background (roomNodes) both draw what room.drawn_meshes yields.
+room.drawn_meshes = without_spine(room.drawn_meshes)
 
 
 def bundle_settings(folder: Path) -> tuple[str, BundleKey]:
-    """The CDN root (config.toml cdn_root) and bundle key (CSharp/Crypto.cs) of the service."""
+    """The fallback CDN root (config.toml cdn_root) and the bundle key (backend/CSharp/Crypto.cs) of the Ournotes
+    folder."""
     cdn = tomllib.loads((folder / "config.toml").read_text())["cdn_root"]
-    source = (folder / "moenotes-assets/CSharp/Crypto.cs").read_text()
+    source = (folder / "backend/CSharp/Crypto.cs").read_text()
     key = re.search(r'aes\.Key = Convert\.FromHexString\("([0-9A-Fa-f]+)"\)', source)
     seed = re.search(r'SHA256\.HashData\(Convert\.FromHexString\("([0-9A-Fa-f]+)"\)', source)
     if not key or not seed:
-        raise SystemExit(f"{folder}/moenotes-assets/CSharp/Crypto.cs: no bundle key and nonce seed")
+        raise SystemExit(f"{folder}/backend/CSharp/Crypto.cs: no bundle key and nonce seed")
     return cdn, BundleKey(bytes.fromhex(key[1]), bytes.fromhex(seed[1]))
 
 
-def catalog_versions(service: str, snap: dict) -> list[str]:
-    """The catalog file versions the snapshot may be of, likeliest first: the release whose catalog refresh made it
-    (update_catalog.py; a release puts catalog_<resource version> in the configured scope, main), the service's
-    other releases of its region, then its scope's own (a manual refresh)."""
+def catalog_versions(snap: dict, watcher: str = WATCHER) -> list[str]:
+    """The catalog file versions the snapshot may be of, likeliest first: the resource version of the watcher's update
+    that made it (catalog_<resource version>), then its scope's own (main, a manual refresh)."""
     try:
-        releases = json.loads(get(service.rstrip("/") + "/versions/index.json"))["regions"].get(snap["region"], [])
-    except OSError:                         # no release yet
-        releases = []
-    made = [r for r in releases if (r.get("locales") or {}).get(snap["locale"], {}).get("snapshot") == snap["snapshot"]]
-    return list(dict.fromkeys([*(r.get("catalog_version") or r["resource_version"] for r in made + releases),
-                               snap["version"]]))
+        updates = json.loads(get(watcher.rstrip("/") + "/updates"))
+    except (OSError, ValueError):           # no watcher
+        updates = []
+    made = [u["resource_version"] for u in updates if u.get("snapshot") == snap["snapshot"]]
+    return list(dict.fromkeys([*made, snap["version"]]))
 
 
 def open_catalog(snap: dict, versions: list[str], cache: Path, cdn: str, key: BundleKey) -> Catalog:
@@ -114,10 +138,26 @@ def classes(env) -> dict[str, list]:
     return out
 
 
+def spine_writer(spine_dir: Path):
+    """The `write(file name, bytes)` of spot.write_skeleton for one situation's Spine files: a JSON skeleton compact
+    (the app ships it). A situation and its background may name the same file; it must be the same."""
+    spine_dir.mkdir(parents=True, exist_ok=True)
+    written: dict[str, bytes] = {}
+
+    def write(name: str, data: bytes) -> None:
+        if name.endswith(".json"):
+            data = json.dumps(json.loads(data), separators=(",", ":"), ensure_ascii=False).encode()
+        if written.setdefault(name, data) != data:
+            raise RuntimeError(f"{spine_dir}: two different Spine files named {name}")
+        (spine_dir / name).write_bytes(data)
+    return write
+
+
 def situation(cat: Catalog, key: str, row: dict | None, spot_id: int, tables: dict,
-              spine_dir: Path) -> tuple[dict, list[dict], str]:
-    """spot.json of a situation key (as nnnotes spot.extract) and the sorting order of each Spine character (as
-    storyhost.spine_records), and the name of the situation's prefab; the Spine files go to `spine_dir`."""
+              write) -> tuple[dict, list[dict], str]:
+    """spot.json of a situation key (its master data row and names, and the situation settings and Spine characters as
+    nnnotes spot.extract reads them), the sorting order of each Spine character (as storyhost.spine_records) and the
+    name of the situation's prefab; the Spine files go to `write` (spine_writer)."""
     env = UnityPy.load(*[str(p) for p in cat.fetch_key(key)])
     graph = SceneGraph(env)
     by_cls = classes(env)
@@ -131,12 +171,6 @@ def situation(cat: Catalog, key: str, row: dict | None, spot_id: int, tables: di
     def world_of(go_pptr) -> list[float]:
         return spot._mat4(graph.world_of_go(go_pptr["m_PathID"]))
 
-    def write(name: str, data: bytes) -> None:
-        if name.endswith(".json"):          # compact, as the story site stores a JSON skeleton
-            data = json.dumps(json.loads(data), separators=(",", ":"), ensure_ascii=False).encode()
-        (spine_dir / name).write_bytes(data)
-
-    spine_dir.mkdir(parents=True, exist_ok=True)
     skeletons, written = {}, {}
     for o in by_cls.get("SkeletonDataAsset", []):
         skeletons[o.path_id] = spot.write_skeleton(o, write, written)
@@ -154,25 +188,16 @@ def situation(cat: Catalog, key: str, row: dict | None, spot_id: int, tables: di
             rec.update(sortingOrder=mt.get("m_SortingOrder"), sortingLayer=mt.get("m_SortingLayerID"))
         sorting.append(rec)
 
-    text = next((t for t in tables["MasterText"] if row and t["_id"] == row["_nameTextId"]), {})
-    taps: dict[int, list[int]] = {}
-    for r in tables["MasterStoryHomeSpotTapTalkEpisode"]:
-        if r.get("_spotId") == spot_id:
-            taps.setdefault(r["_characterId"], []).append(r["_advId"])
-    bg_key = background_key(key, row)
+    # A preview has no MasterText row: the settings list it as an unreleased Spot.
+    text = next((t for t in tables["MasterText"] if t["_id"] == row["_nameTextId"]), {}) if row else {
+        "_korean": "미공개 스팟"}
     doc = {
         "spotId": spot_id,
         "master": row,
         "name": {lang[1:]: text.get(lang, "") for lang in spot.LANGS},
-        "tapTalk": {str(k): v for k, v in sorted(taps.items())},
         "situationSettings": strip_pptrs(by_cls["SpotSituationSettings"][0].read_typetree()),
-        "controller": {k: v for k, v in controller.items() if k not in ("_spotSpineCharacters", "_characters")},
-        "characters": spot.tap_targets(by_cls.get("SpotCharacter", []), graph, world_of),
         "spineCharacters": spine_chars,
         "skeletons": list(skeletons.values()),
-        "resources": {"background": [b.name for b in cat.resolve(bg_key)],
-                      "situation": [b.name for b in cat.resolve(key)]},
-        "matrixConvention": "Unity world space (left-handed), 4x4 column-major",
     }
     name = storyhost.container_go(env, cat._entry(key)["internal_id"]).read_typetree()["m_Name"]
     return doc, sorting, name
@@ -184,10 +209,11 @@ def background_key(key: str, row: dict | None) -> str:
     return row["_backgroundAssetPath"] if row else f"Spot/{room_name}/Background/{room_name}"
 
 
-def placed_background(cat: Catalog, key: str, situation_name: str) -> dict:
+def placed_background(cat: Catalog, key: str, situation_name: str, write) -> dict:
     """roomRoot, roomNodes (path, placed, active per room.glb node) and situation of the background `key` placed for
     a situation, as storyhost.background: SpotBackground.Prepare(situation_name) on the prefab root, then the root
-    activated. The node names go with them, to check room.glb."""
+    activated. The node names go with them, to check room.glb, and the background's Spine objects the situation
+    shows (background_spine; their files go to `write`)."""
     env = UnityPy.load(*[str(p) for p in cat.fetch_key(key)])
     graph = SceneGraph(env)
     mf_by_go, mr_by_go = room.mesh_components(env)
@@ -214,27 +240,66 @@ def placed_background(cat: Catalog, key: str, situation_name: str) -> dict:
                       "activate": [graph.path(x) for x in prep["activate"]],
                       "hide": [graph.path(graph.tf_of_go[g]) if g in graph.tf_of_go else None for g in prep["hide"]]},
         "nodeNames": [name for _, name in nodes],
+        "spine": background_spine(env, graph, root, shown, write),
     }
+
+
+def background_spine(env, graph: SceneGraph, root: int, shown: dict, write) -> dict:
+    """The Spine objects of a placed background that are active (the millsage cafe's 04_BG_table and 04_BG_chair,
+    which its situation 04 shows): Spine characters of the situation in all but their place, so in the form of
+    situation()'s spineCharacters, skeletons and sorting orders. room.glb leaves them out (without_spine)."""
+    renderers = {o.read_typetree()["m_GameObject"]["m_PathID"]: o
+                 for o in env.objects if o.type.name == "MeshRenderer"}
+    skeletons, written, out = {}, {}, {"spineCharacters": [], "skeletons": [], "sorting": []}
+    for o in env.objects:
+        if o.type.name != "MonoBehaviour":
+            continue
+        try:
+            t = o.read_typetree()
+        except Exception:                   # no type tree: not a SkeletonAnimation
+            continue
+        if "skeletonDataAsset" not in t or "_animationName" not in t or not t.get("m_Enabled", 1):
+            continue
+        go = t["m_GameObject"]["m_PathID"]
+        tf = graph.tf_of_go[go]
+        if not (storyhost.under(graph, tf, root) and storyhost.active_in_hierarchy(graph, tf, shown)):
+            continue
+        sda = o.read().skeletonDataAsset
+        if sda.path_id not in skeletons:
+            skeletons[sda.path_id] = spot.write_skeleton(sda.deref(), write, written)
+            out["skeletons"].append(skeletons[sda.path_id])
+        path = graph.path(tf)
+        out["spineCharacters"].append({
+            "path": path, "skeletonData": skeletons[sda.path_id]["name"],
+            "animation": {k: t[k] for k in ("_animationName", "loop", "timeScale", "initialSkinName", "initialFlipX",
+                                            "initialFlipY", "pmaVertexColors", "tintBlack", "zSpacing")},
+            "world": spot._mat4(graph.world_of_go(go))})
+        mt = renderers[go].read_typetree() if go in renderers else {}
+        out["sorting"].append({"path": path, "sortingOrder": mt.get("m_SortingOrder"),
+                               "sortingLayer": mt.get("m_SortingLayerID")})
+    return out
 
 
 def export(cat: Catalog, key: str, row: dict | None, spot_id: int, tables: dict, out: Path) -> None:
     sdir = out / "spot"
-    doc, sorting, name = situation(cat, key, row, spot_id, tables, sdir / "spine")
-    write_json(sdir / "spot.json", doc)
+    write = spine_writer(sdir / "spine")
+    doc, sorting, name = situation(cat, key, row, spot_id, tables, write)
     bg_key = background_key(key, row)
     room_doc = room.extract_room(cat, bg_key, sdir / "room.glb")
-    bg = placed_background(cat, bg_key, name)
+    bg = placed_background(cat, bg_key, name, write)
     glb_nodes = [n["name"] for n in storyhost.glb_json(sdir / "room.glb")["nodes"]]
     if glb_nodes != bg.pop("nodeNames") or room_doc["meshCount"] != len(bg["roomNodes"]):
         raise RuntimeError(f"{bg_key}: room.glb nodes differ from the placed background's")
-    home = {"spotId": spot_id, "spot": "spot/spot.json", "room": "spot/room.glb", **bg,
-            "sceneRoot": {"key": "EmbScene/Spot", "sceneCamera": {"camera": SCENE_CAMERA}},
-            "spineCharacters": sorting}
+    bg_spine = bg.pop("spine")
+    doc["spineCharacters"] += bg_spine["spineCharacters"]
+    doc["skeletons"] += bg_spine["skeletons"]
+    sorting += bg_spine["sorting"]
+    write_json(sdir / "spot.json", doc)
     write_json(out / "host.json", {
-        "format": "bdon-immersive-home.spot-host/1",
-        "about": "The part of an ournotes.story-host/1 home screen that tools/spots/build_spot.py reads, exported "
-                 "from the local catalog by tools/spots/export_spot.py",
-        "situationKey": key, "home": home})
+        "format": "bdon-immersive-home.spot-host/2",
+        "about": "The placed room, camera and drawing order of a Spot's home screen that tools/spots/build_spot.py "
+                 "reads, exported from the local catalog by tools/spots/export_spot.py",
+        "situationKey": key, "home": {**bg, "camera": SCENE_CAMERA, "spineCharacters": sorting}})
     active = sum(n["active"] for n in bg["roomNodes"])
     print(f"{spot_id} {name}: {len(doc['spineCharacters'])} Spine characters, "
           f"{active}/{len(bg['roomNodes'])} room nodes active")
@@ -251,44 +316,62 @@ def register(ids_file: Path, spot_id: int, directory: str) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("spots", nargs="+", help="situations (home_..._01) or Spot ids")
+    ap.add_argument("spots", nargs="*", help="situations (home_..._01) or Spot ids")
+    ap.add_argument("--all", action="store_true", help="every Spot of the master data and the previews of --ids")
     ap.add_argument("--id", type=int, help="Spot id of a situation without a MasterHomeSpot row (a preview)")
-    ap.add_argument("--service", default=SERVICE, help=f"moenotes-assets service (default {SERVICE})")
-    ap.add_argument("--region", help="region of the service (default: its first)")
-    ap.add_argument("--moenotes", help="local MoeNotes folder (default: the running container's)")
+    ap.add_argument("--service", default=SERVICE, help=f"Ournotes asset service (default {SERVICE})")
+    ap.add_argument("--watcher", default=WATCHER, help=f"Ournotes watcher (default {WATCHER})")
+    ap.add_argument("--ournotes", help="Ournotes folder (default: the running asset service's)")
     ap.add_argument("--out", type=Path, default=ROOT / "data/source", help="where to write (default data/source)")
-    ap.add_argument("--ids", type=Path, default=LOCAL_IDS, help="list to add them to (default %(default)s)")
+    ap.add_argument("--ids", type=Path, default=SPOT_IDS, help="list to add them to (default %(default)s)")
     ap.add_argument("--cache", type=Path, default=ROOT / "data/cache", help="catalogs and bundles (default data/cache)")
     args = ap.parse_args()
+    if args.all == bool(args.spots):
+        raise SystemExit("give situations or Spot ids, or --all")
     if args.id is not None and len(args.spots) != 1:
         raise SystemExit("--id takes one situation")
 
-    snap = snapshot(args.service, args.region)
-    cdn, key = bundle_settings(moenotes_dir(args.moenotes))
-    cat = open_catalog(snap, catalog_versions(args.service, snap), args.cache / snap["region"], cdn, key)
-    tables = {t: master_table(snap["region"], t) for t in
-              ("MasterHomeSpot", "MasterText", "MasterStoryHomeSpotTapTalkEpisode")}
-    by_id = {str(r["_id"]): r for r in tables["MasterHomeSpot"]}
+    state = game_state(args.watcher)
+    snap = snapshot(args.service, state["region"])
+    _, key = bundle_settings(ournotes_dir(args.ournotes))
+    cdn = state["cdn_root"].split("|")[0]
+    cat = open_catalog(snap, catalog_versions(snap, args.watcher), args.cache / snap["region"], cdn, key)
+    tables = {t: master_table(state, t) for t in ("MasterHomeSpot", "MasterText")}
+    rows = {r["_situationAssetPath"]: r for r in tables["MasterHomeSpot"]}
     by_situation = {SITUATION_KEY.fullmatch(k)["situation"]: k for k in cat.keys("Spot/")
                     if SITUATION_KEY.fullmatch(k) and "/Background/" not in k}
 
+    jobs: list[tuple[str, int]] = []       # (situation key, Spot id)
+    if args.all:
+        for sit_key, row in sorted(rows.items(), key=lambda e: e[1]["_id"]):
+            if sit_key in by_situation.values():
+                jobs.append((sit_key, row["_id"]))
+            else:
+                print(f"{row['_id']}: {sit_key} is not in the catalog")
+        for situation, spot_id in exports(args.ids).items():
+            if situation not in by_situation:
+                print(f"{spot_id} {situation}: listed, but not in the catalog")
+            elif by_situation[situation] not in rows:
+                jobs.append((by_situation[situation], int(spot_id)))
     for arg in args.spots:
         if arg.isdigit():
-            if arg not in by_id:
+            row = next((r for r in rows.values() if str(r["_id"]) == arg), None)
+            if row is None:
                 raise SystemExit(f"{arg}: no MasterHomeSpot row in {snap['region']}")
-            sit_key = by_id[arg]["_situationAssetPath"]
+            sit_key = row["_situationAssetPath"]
         elif arg in by_situation:
             sit_key = by_situation[arg]
         else:
             raise SystemExit(f"{arg}: no situation of that name in the catalog")
-        row = next((r for r in tables["MasterHomeSpot"] if r["_situationAssetPath"] == sit_key), None)
-        if row is None and args.id is None:
+        if sit_key not in rows and args.id is None:
             raise SystemExit(f"{arg}: no MasterHomeSpot row in {snap['region']} yet (--id N exports a preview)")
-        spot_id = args.id if args.id is not None else row["_id"]
+        jobs.append((sit_key, args.id if args.id is not None else rows[sit_key]["_id"]))
+
+    for sit_key, spot_id in jobs:
         directory = SITUATION_KEY.fullmatch(sit_key)["situation"]
-        export(cat, sit_key, row, spot_id, tables, args.out / directory)
+        export(cat, sit_key, rows.get(sit_key), spot_id, tables, args.out / directory)
         register(args.ids, spot_id, directory)
-    print(f"listed in {args.ids}; build_spot.py packages them with the story site's Spots (macos/build.sh)")
+    print(f"{len(jobs)} exported, listed in {args.ids}; build_spot.py packages them (macos/build.sh)")
 
 
 if __name__ == "__main__":

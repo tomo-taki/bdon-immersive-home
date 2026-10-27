@@ -13,20 +13,17 @@ APP="$ROOT/dist/$APP_NAME.app"
 
 cd "$ROOT"
 
-# Spot data (room.glb, spot.json, Spine 4.2 skeletons) from the moenotes
-# Home Talk exports (downloads in data/source): one Talk per Home Spot
-# (see tools/spots/list_spots.py). Spots exported from the local catalog
-# before the story site has them (tools/spots/export_spot.py) are listed in
-# data/source/local_spot_ids.txt; a newer list rebuilds the index.
-LOCAL_SPOTS=data/source/local_spot_ids.txt
-[ -f "$LOCAL_SPOTS" ] || LOCAL_SPOTS=""
-if [ ! -f data/spots/index.json ]; then
-    python3 tools/spots/list_spots.py data/source
-    awk '{print $2}' data/source/spot_ids.txt | xargs -P 8 -I{} sh -c \
-        '[ -f data/source/{}/host.json ] || python3 tools/spots/fetch_spot.py {} data/source/{}'
+# Spot data (room.glb, spot.json, Spine 4.2 skeletons) exported from the
+# game's own files: the Home Spots of the Ournotes asset service's catalog
+# (Docker), with bundles and master data from the region's Bilibili CDN
+# (tools/spots/export_spot.py, data/venv). The exports are listed in
+# data/source/spot_ids.txt; a newer list rebuilds the index.
+SPOT_IDS=data/source/spot_ids.txt
+if [ ! -f "$SPOT_IDS" ]; then
+    data/venv/bin/python tools/spots/export_spot.py --all
 fi
-if [ ! -f data/spots/index.json ] || [ "$LOCAL_SPOTS" -nt data/spots/index.json ]; then
-    python3 tools/spots/build_spot.py data/spots data/source/spot_ids.txt data/source ${LOCAL_SPOTS:+"$LOCAL_SPOTS"}
+if [ ! -f data/spots/index.json ] || [ "$SPOT_IDS" -nt data/spots/index.json ]; then
+    python3 tools/spots/build_spot.py data/spots "$SPOT_IDS" data/source
 fi
 
 # Renderer: native Metal (macos/Sources/Render + shared/spine-bridge over

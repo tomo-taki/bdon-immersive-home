@@ -1,40 +1,55 @@
 #!/usr/bin/env python3
 """List the Home Spot situations of the local catalog that the app does not have yet.
 
-The local MoeNotes Viewer browses a moenotes-assets service (Docker, http://127.0.0.1:8091): one region's
-Addressables catalog, where every Spot situation is a key Spot/<room>/<situation>/<situation>. The app's Spots
-are data/spots/index.json (each spot.json "name" is its situation). The region's master data, the tables bdon.moe
-reads (metadata.bdon.moe/<region>/master/), gives a situation its Spot id and name once the game lists it in
-MasterHomeSpot; until then the catalog has the assets of a Spot the game does not show yet.
+The Ournotes asset service (Docker, http://127.0.0.1:8091; the local OurNotes Viewer browses it) holds one region's
+Addressables catalog, where every Spot situation is a key Spot/<room>/<situation>/<situation>. Its watcher
+(http://127.0.0.1:8092) asks the game's own server list and version API and refreshes the catalog from the region's
+Bilibili CDN when the release changes; its /status gives the CDN root and the master data version the game reports.
+The app's Spots are data/spots/index.json (each spot.json "name" is its situation).
 
-export_spot.py exports a new situation in the layout fetch_spot.py writes; one it exported without a MasterHomeSpot
-row (a preview, --id) is listed until the master data lists it, then to be exported again. update_catalog.py keeps
-the service on the region's current release and reports the same list.
+The region's master data comes from the same CDN (<cdn>/master/<version>/<Table>.bin, checked against its manifest),
+decrypted with the key and IV in data/secrets/nnnotes-direct.toml ([master]; not committed) and cached in
+data/cache/master. It gives a situation its Spot id and name once the game lists it in MasterHomeSpot; until then
+the catalog has the assets of a Spot the game does not show yet.
 
-Usage: local_spots.py [--service URL] [--region kr]
+export_spot.py exports situations into data/source and lists them in data/source/spot_ids.txt; one exported without a
+MasterHomeSpot row (a preview, --id) is listed here until the master data lists it, then to be exported again.
+update_catalog.py reports the same list every 6 hours.
+
+Needs nnnotes (data/venv). Usage: data/venv/bin/python tools/spots/local_spots.py [--service URL] [--watcher URL]
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
+import tomllib
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from fetch_spot import get
+from nnnotes import master
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVICE = "http://127.0.0.1:8091"
-MASTER = "https://metadata.bdon.moe/{region}/master/{table}.json"
+WATCHER = "http://127.0.0.1:8092"
 SITUATION_KEY = re.compile(r"Spot/(?P<room>[^/]+)/(?P<situation>[^/]+)/(?P=situation)")
-LOCAL_IDS = ROOT / "data/source/local_spot_ids.txt"
-CONFIG_MOUNT = "/etc/moenotes-assets/config.toml"  # compose.yaml of the local MoeNotes folder
+SPOT_IDS = ROOT / "data/source/spot_ids.txt"
+MASTER_KEY = ROOT / "data/secrets/nnnotes-direct.toml"
+MASTER_CACHE = ROOT / "data/cache/master"
+CONFIG_MOUNT = "/etc/backend/config.toml"  # compose.yaml of the Ournotes folder
 
 
-def moenotes_dir(arg: str | None) -> Path:
-    """The local MoeNotes folder (compose.yaml, config.toml, .env, moenotes-assets/): `arg`, else the folder whose
-    config.toml the running moenotes-assets container mounts."""
+def get(url: str) -> bytes:
+    with urllib.request.urlopen(url, timeout=60) as response:
+        return response.read()
+
+
+def ournotes_dir(arg: str | None) -> Path:
+    """The Ournotes folder (compose.yaml, config.toml, backend/): `arg`, else the folder whose config.toml the running
+    asset service mounts."""
     if arg:
         return Path(arg).expanduser()
     fmt = "{{range .Mounts}}{{if eq .Destination \"%s\"}}{{.Source}}{{end}}{{end}}" % CONFIG_MOUNT
@@ -46,7 +61,7 @@ def moenotes_dir(arg: str | None) -> Path:
     except (OSError, subprocess.CalledProcessError):
         source = ""
     if not source:
-        raise SystemExit("no running moenotes-assets container: give the local MoeNotes folder with --moenotes")
+        raise SystemExit("no running Ournotes asset service: give the Ournotes folder with --ournotes")
     return Path(source.removeprefix("/host_mnt")).parent   # Docker Desktop names host paths /host_mnt/...
 
 
@@ -54,7 +69,16 @@ def service_json(service: str, path: str):
     try:
         return json.loads(get(service.rstrip("/") + path))
     except OSError as e:
-        raise SystemExit(f"{service}: {e} (is the moenotes-assets container running?)")
+        raise SystemExit(f"{service}: {e} (are the Ournotes containers running?)")
+
+
+def game_state(watcher: str) -> dict:
+    """The watcher's /status: region, resource_version, master_version, cdn_root (roots joined by "|") and the
+    snapshot of its last refresh, as the game's server list and version API reported them."""
+    state = service_json(watcher, "/status")
+    if not state.get("master_version") or not state.get("cdn_root"):
+        raise SystemExit(f"{watcher}: the game's version is not known yet ({state.get('error') or 'not checked'})")
+    return state
 
 
 def snapshot(service: str, region: str | None) -> dict:
@@ -83,15 +107,36 @@ def situation_keys(service: str, snap: dict) -> list[str]:
     return sorted(k for k in keys if (m := SITUATION_KEY.fullmatch(k)) and m["situation"] != "Background")
 
 
-def master_table(region: str, table: str) -> list[dict]:
-    return json.loads(get(MASTER.format(region=region, table=table)))["_allData"]
+def master_key() -> master.MasterKey:
+    if not MASTER_KEY.exists():
+        raise SystemExit(f"{MASTER_KEY}: missing (the master data's [master] key and iv, 64 hex digits each)")
+    m = tomllib.loads(MASTER_KEY.read_text())["master"]
+    return master.MasterKey(bytes.fromhex(m["key"]), bytes.fromhex(m["iv"]))
 
 
-def master_spots(region: str) -> dict[str, dict]:
+def master_table(state: dict, table: str) -> list[dict]:
+    """The rows of a master data table of the version the watcher reports, from the region's CDN once."""
+    path = MASTER_CACHE / state["region"] / state["master_version"] / f"{table}.json"
+    if not path.exists():
+        base = f"{state['cdn_root'].split('|')[0].rstrip('/')}/master/{state['master_version']}"
+        files = {f["name"]: f for f in json.loads(get(f"{base}/MasterManifest.json"))["files"]}
+        if f"{table}.bin" not in files:
+            raise SystemExit(f"master data {state['master_version']}: no {table}")
+        raw = get(f"{base}/{table}.bin")
+        if hashlib.sha256(raw).hexdigest() != files[f"{table}.bin"]["hash"].lower():
+            raise SystemExit(f"master data {state['master_version']}: {table}.bin is not the manifest's")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        part = path.with_suffix(".part")
+        part.write_bytes(master.decode(raw, master_key()))
+        part.replace(path)
+    return json.loads(path.read_text())["_allData"]
+
+
+def master_spots(state: dict) -> dict[str, dict]:
     """{situation key: {"id", "name" (Korean, else Japanese)}} of the region's MasterHomeSpot."""
-    text = {t["_id"]: t for t in master_table(region, "MasterText")}
+    text = {t["_id"]: t for t in master_table(state, "MasterText")}
     out = {}
-    for row in master_table(region, "MasterHomeSpot"):
+    for row in master_table(state, "MasterHomeSpot"):
         t = text.get(row["_nameTextId"], {})
         out[row["_situationAssetPath"]] = {"id": str(row["_id"]), "name": t.get("_korean") or t.get("_japanese", "")}
     return out
@@ -106,11 +151,11 @@ def app_situations() -> dict[str, str]:
             for e in json.loads(index.read_text())}
 
 
-def local_exports() -> dict[str, str]:
-    """{situation: Spot id} of data/source/local_spot_ids.txt (export_spot.py)."""
-    if not LOCAL_IDS.exists():
+def exports(ids_file: Path = SPOT_IDS) -> dict[str, str]:
+    """{situation: Spot id} of data/source/spot_ids.txt (export_spot.py)."""
+    if not ids_file.exists():
         return {}
-    return {d: i for i, d in (line.split() for line in LOCAL_IDS.read_text().splitlines() if line.strip())}
+    return {d: i for i, d in (line.split() for line in ids_file.read_text().splitlines() if line.strip())}
 
 
 def is_preview(situation: str) -> bool:
@@ -119,19 +164,19 @@ def is_preview(situation: str) -> bool:
     return doc.exists() and json.loads(doc.read_text()).get("master") is None
 
 
-def findings(snap: dict, keys: list[str]) -> list[dict]:
+def findings(snap: dict, keys: list[str], state: dict) -> list[dict]:
     """What the app lacks of the snapshot's situations `keys`: {kind, situation, app (its Spot id there), row (its
     MasterHomeSpot id and name, or None)} per
       new      a situation the app does not have
       preview  one the app has from a preview export
       id       one whose Spot id in the app is not the master data's
       gone     a Spot of the app that the catalog does not have"""
-    master = master_spots(snap["region"])
-    app, exported = app_situations(), local_exports()
+    master_rows = master_spots(state)
+    app, exported = app_situations(), exports()
     out = []
     for key in keys:
         situation = SITUATION_KEY.fullmatch(key)["situation"]
-        row = master.get(key)
+        row = master_rows.get(key)
         if situation not in app:
             kind = "new"
         elif situation in exported and is_preview(situation):
@@ -149,7 +194,7 @@ def findings(snap: dict, keys: list[str]) -> list[dict]:
 def describe(f: dict, region: str) -> str:
     row = f"{f['row']['id']}  {f['row']['name']}" if f["row"] else f"no MasterHomeSpot row in {region} yet"
     if f["kind"] == "new":
-        exported = local_exports().get(f["situation"])
+        exported = exports().get(f["situation"])
         return f"new     {f['situation']:44s} {row}" + (f"  (exported as {exported}, not built yet)" if exported else "")
     if f["kind"] == "preview":
         return f"preview {f['situation']:44s} {f['app']} in the app; " + (
@@ -161,16 +206,18 @@ def describe(f: dict, region: str) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--service", default=SERVICE, help=f"moenotes-assets service (default {SERVICE})")
-    ap.add_argument("--region", help="region of the service (default: its first)")
+    ap.add_argument("--service", default=SERVICE, help=f"Ournotes asset service (default {SERVICE})")
+    ap.add_argument("--watcher", default=WATCHER, help=f"Ournotes watcher (default {WATCHER})")
     args = ap.parse_args()
 
-    snap = snapshot(args.service, args.region)
+    state = game_state(args.watcher)
+    snap = snapshot(args.service, state["region"])
     keys = situation_keys(args.service, snap)
     created = datetime.fromtimestamp(snap["created"])
     print(f"local catalog: {snap['region']}/{snap['locale']} snapshot {snap['snapshot'][:12]} "
-          f"({created:%Y-%m-%d %H:%M}), {len(keys)} situations; app: {len(app_situations())} Spots")
-    found = findings(snap, keys)
+          f"({created:%Y-%m-%d %H:%M}), {len(keys)} situations, master data {state['master_version'][:12]}; "
+          f"app: {len(app_situations())} Spots")
+    found = findings(snap, keys, state)
     for f in found:
         print(describe(f, snap["region"]))
     if not found:

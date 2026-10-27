@@ -11,8 +11,8 @@ web/node_modules/
 legacy/native-proto/.build/
 legacy/native-proto/vendor/
 
-# Game data: downloads (data/source), the Spots built from them and their
-# thumbnails (tools/spots/, macos/build.sh). Re-fetched, never committed.
+# Game data: Spot exports (data/source), the Spots built from them and their
+# thumbnails (tools/spots/, macos/build.sh). Re-exported, never committed.
 data/
 legacy/spots_vrfloor_only/
 windows/data/
