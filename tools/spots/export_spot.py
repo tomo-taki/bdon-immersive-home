@@ -367,6 +367,15 @@ def main() -> None:
             raise SystemExit(f"{arg}: no MasterHomeSpot row in {snap['region']} yet (--id N exports a preview)")
         jobs.append((sit_key, args.id if args.id is not None else rows[sit_key]["_id"]))
 
+    # A Spot id names the app's files (data/spots/<room>/<id>, data/thumbs/<id>.jpg): one situation each.
+    listed = exports(args.ids)
+    for sit_key, spot_id in jobs:
+        situation = SITUATION_KEY.fullmatch(sit_key)["situation"]
+        other = next((d for d, i in listed.items() if i == str(spot_id) and d != situation), None)
+        if other:
+            raise SystemExit(f"Spot id {spot_id} of {situation} is {other}'s in {args.ids}: "
+                             f"remove that first (tools/spots/remove_spot.py {other})")
+
     for sit_key, spot_id in jobs:
         directory = SITUATION_KEY.fullmatch(sit_key)["situation"]
         export(cat, sit_key, rows.get(sit_key), spot_id, tables, args.out / directory)

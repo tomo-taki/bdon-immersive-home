@@ -17,38 +17,19 @@ cd "$ROOT"
 # game's own files: the Home Spots of the Ournotes asset service's catalog
 # (Docker), with bundles and master data from the region's Bilibili CDN
 # (tools/spots/export_spot.py, data/venv). The exports are listed in
-# data/source/spot_ids.txt; a newer list rebuilds the index.
-SPOT_IDS=data/source/spot_ids.txt
-if [ ! -f "$SPOT_IDS" ]; then
+# data/source/spot_ids.txt.
+if [ ! -f data/source/spot_ids.txt ]; then
     data/venv/bin/python tools/spots/export_spot.py --all
-fi
-if [ ! -f data/spots/index.json ] || [ "$SPOT_IDS" -nt data/spots/index.json ]; then
-    python3 tools/spots/build_spot.py data/spots "$SPOT_IDS" data/source
 fi
 
 # Renderer: native Metal (macos/Sources/Render + shared/spine-bridge over
 # vendor/spine-runtimes spine-c 4.2).
 swift build -c release --disable-sandbox
 
-# Edge zoom per Spot (cover.json), measured by the app itself: new Spots, or
-# all of them with RECOVER=1 after a renderer or camera change.
-missing="$(for d in data/spots/*/*/; do [ -f "$d/cover.json" ] || basename "$d"; done)"
-if [ "${RECOVER:-0}" = 1 ]; then
-    .build/release/BDONImmersiveHome --coverage
-elif [ -n "$missing" ]; then
-    # shellcheck disable=SC2086
-    .build/release/BDONImmersiveHome --coverage $missing
-fi
-# Settings thumbnails (with and without characters), rendered by the app itself:
-# Spots without them, or all of them with REBUILD_THUMBS=1.
-spot_ids="$(python3 -c "import json; print(' '.join(s['id'] for s in json.load(open('data/spots/index.json'))))")"
-no_thumbs="$(for id in $spot_ids; do [ -f "data/thumbs/${id}_bg.jpg" ] || echo "$id"; done)"
-if [ "${REBUILD_THUMBS:-0}" = 1 ]; then
-    tools/spots/thumbs.sh .build/release/BDONImmersiveHome
-elif [ -n "$no_thumbs" ]; then
-    # shellcheck disable=SC2086
-    tools/spots/thumbs.sh .build/release/BDONImmersiveHome $no_thumbs
-fi
+# data/spots from the list, and the edge zoom (cover.json) and settings
+# thumbnails the app itself draws for Spots without them (RECOVER=1 and
+# REBUILD_THUMBS=1 redo all of them after a renderer or camera change).
+tools/spots/finish_spots.sh .build/release/BDONImmersiveHome
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/data"

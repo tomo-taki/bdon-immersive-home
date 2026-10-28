@@ -27,9 +27,13 @@ The mac and Windows apps show each update's summary (the GitHub release body) in
 
 - Every Spot comes from the game's own files, never from a third-party site. The local OurNotes Viewer's asset service (Docker, 127.0.0.1:8091) holds the region's catalog; its watcher (127.0.0.1:8092) follows the game's server list and version API and refreshes the catalog from the region's Bilibili CDN. Bundles and master data come from that CDN.
 - Run the Spot tools with `data/venv/bin/python`. Set `data/venv` up once: `python3.12 -m venv data/venv && data/venv/bin/pip install nnnotes==0.1.4`. Keep the pin: `export_spot.py` relies on its internals. The master data needs `[master] key` and `iv` in `data/secrets/nnnotes-direct.toml`; the bundle key is read from the service's `backend/CSharp/Crypto.cs`.
-- `tools/spots/local_spots.py` lists the situations of the catalog that `data/spots` lacks, with the Spot id and name the master data gives them.
-- `tools/spots/export_spot.py <situation | Spot id>` (or `--all`: every Spot of the master data) writes it into `data/source/<situation>/` and lists it in `data/source/spot_ids.txt`. The next `macos/build.sh` adds it to `data/spots` with its cover and thumbnails; the Windows and Android builds take them from there. Without `spot_ids.txt`, `macos/build.sh` exports `--all` itself.
-- A situation without a MasterHomeSpot row has no Spot id or name yet; `--id N` exports a preview. Never release one: delete its line from `spot_ids.txt` and its `data/spots` and `data/thumbs` files first.
+- The watcher follows new app versions by itself (it retries with the next client versions when the game answers `CLIENT_UPDATE_REQUIRED`), so a game update reaches the catalog without changes here.
+- `tools/spots/local_spots.py` lists the situations of the catalog that `data/spots` lacks, with the Spot id and name the master data gives them (`--json` for tools).
+- `tools/spots/export_spot.py <situation | Spot id>` (or `--all`: every Spot of the master data) writes it into `data/source/<situation>/` and lists it in `data/source/spot_ids.txt`. It refuses a Spot id another listed situation has: a Spot id names `data/spots/<room>/<id>` and `data/thumbs/<id>.jpg`.
+- `tools/spots/finish_spots.sh` builds `data/spots` from the list and draws the cover and thumbnails of new Spots with the app's renderer; `macos/build.sh` runs it too. The Windows and Android builds take `data/spots` from there. Without `spot_ids.txt`, `macos/build.sh` exports `--all` itself.
+- `tools/spots/remove_spot.py <situation | Spot id>` takes a Spot out of `spot_ids.txt`, `data/source`, `data/spots` and `data/thumbs`.
+- The OurNotes Viewer's Immersive Home 스팟 screen runs these tools (check, add = export + finish, remove); it never builds or releases the app.
+- A situation without a MasterHomeSpot row has no Spot id or name yet; `--id N` exports a preview. Never release one: remove it (`remove_spot.py`) first, and before the master data's own Spot of that id is added.
 - `tools/spots/update_catalog.py --install` (a LaunchAgent with the installing Python; `--uninstall` removes it) checks at login and every 6 hours, and notifies new situations and previews that the master data now lists.
 
 ## App id

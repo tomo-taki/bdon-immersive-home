@@ -122,10 +122,9 @@ def build(spot_id: str, src: Path, out: Path) -> dict | None:
     }
 
 
-def main() -> None:
-    out, ids_file, root = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+def build_all(out: Path, ids_file: Path, root: Path) -> list[dict]:
+    """Every Spot of `ids_file` into `out`, and its index.json."""
     out.mkdir(parents=True, exist_ok=True)
-
     index = []
     for line in ids_file.read_text().split("\n"):
         if not line.strip():
@@ -137,6 +136,11 @@ def main() -> None:
     index.sort(key=lambda e: int(e["id"]))
     (out / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=1))
     print(f"{len(index)} situations")
+    return index
+
+
+def main() -> None:
+    build_all(Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]))
 
 
 if __name__ == "__main__":

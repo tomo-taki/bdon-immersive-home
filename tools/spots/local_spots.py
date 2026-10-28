@@ -16,7 +16,7 @@ export_spot.py exports situations into data/source and lists them in data/source
 MasterHomeSpot row (a preview, --id) is listed here until the master data lists it, then to be exported again.
 update_catalog.py reports the same list every 6 hours.
 
-Needs nnnotes (data/venv). Usage: data/venv/bin/python tools/spots/local_spots.py [--service URL] [--watcher URL]
+Needs nnnotes (data/venv). Usage: data/venv/bin/python tools/spots/local_spots.py [--service URL] [--watcher URL] [--json]
 """
 from __future__ import annotations
 
@@ -165,17 +165,19 @@ def is_preview(situation: str) -> bool:
 
 
 def findings(snap: dict, keys: list[str], state: dict) -> list[dict]:
-    """What the app lacks of the snapshot's situations `keys`: {kind, situation, app (its Spot id there), row (its
-    MasterHomeSpot id and name, or None)} per
+    """What the app lacks of the snapshot's situations `keys`: {kind, situation, room, app (its Spot id there), row (its
+    MasterHomeSpot id and name, or None), taken (the app's other situation that has the row's Spot id, or None)} per
       new      a situation the app does not have
       preview  one the app has from a preview export
       id       one whose Spot id in the app is not the master data's
-      gone     a Spot of the app that the catalog does not have"""
+      gone     a Spot of the app that the catalog does not have (room None)"""
     master_rows = master_spots(state)
     app, exported = app_situations(), exports()
+    by_id = {i: s for s, i in app.items()}
     out = []
     for key in keys:
-        situation = SITUATION_KEY.fullmatch(key)["situation"]
+        match = SITUATION_KEY.fullmatch(key)
+        situation = match["situation"]
         row = master_rows.get(key)
         if situation not in app:
             kind = "new"
@@ -185,9 +187,12 @@ def findings(snap: dict, keys: list[str], state: dict) -> list[dict]:
             kind = "id"
         else:
             continue
-        out.append({"kind": kind, "situation": situation, "app": app.get(situation), "row": row})
+        taken = by_id.get(row["id"]) if row else None
+        out.append({"kind": kind, "situation": situation, "room": match["room"], "app": app.get(situation), "row": row,
+                    "taken": taken if taken != situation else None})
     found = {SITUATION_KEY.fullmatch(k)["situation"] for k in keys}
-    out += [{"kind": "gone", "situation": s, "app": app[s], "row": None} for s in sorted(set(app) - found)]
+    out += [{"kind": "gone", "situation": s, "room": None, "app": app[s], "row": None, "taken": None}
+            for s in sorted(set(app) - found)]
     return out
 
 
@@ -195,7 +200,8 @@ def describe(f: dict, region: str) -> str:
     row = f"{f['row']['id']}  {f['row']['name']}" if f["row"] else f"no MasterHomeSpot row in {region} yet"
     if f["kind"] == "new":
         exported = exports().get(f["situation"])
-        return f"new     {f['situation']:44s} {row}" + (f"  (exported as {exported}, not built yet)" if exported else "")
+        return f"new     {f['situation']:44s} {row}" + (f"  (exported as {exported}, not built yet)" if exported else "") + (
+            f"  (its Spot id is the app's {f['taken']}: remove that first)" if f["taken"] else "")
     if f["kind"] == "preview":
         return f"preview {f['situation']:44s} {f['app']} in the app; " + (
             f"listed as {row}: export it again" if f["row"] else row)
@@ -208,11 +214,19 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--service", default=SERVICE, help=f"Ournotes asset service (default {SERVICE})")
     ap.add_argument("--watcher", default=WATCHER, help=f"Ournotes watcher (default {WATCHER})")
+    ap.add_argument("--json", action="store_true", help="one JSON document: the catalog, the app's Spot count, findings")
     args = ap.parse_args()
 
     state = game_state(args.watcher)
     snap = snapshot(args.service, state["region"])
     keys = situation_keys(args.service, snap)
+    if args.json:
+        print(json.dumps({"catalog": {"region": snap["region"], "locale": snap["locale"], "snapshot": snap["snapshot"],
+                                      "created": snap["created"], "situations": len(keys),
+                                      "resource_version": state.get("resource_version"),
+                                      "master_version": state["master_version"]},
+                          "app": len(app_situations()), "findings": findings(snap, keys, state)}, ensure_ascii=False))
+        return
     created = datetime.fromtimestamp(snap["created"])
     print(f"local catalog: {snap['region']}/{snap['locale']} snapshot {snap['snapshot'][:12]} "
           f"({created:%Y-%m-%d %H:%M}), {len(keys)} situations, master data {state['master_version'][:12]}; "
