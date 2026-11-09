@@ -1,0 +1,73 @@
+name: Windows release test
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to test before publication
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Verify and render the packaged app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = 'BDONImmersiveHome-win-x64.zip'
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --dir package --pattern $archive --pattern SHA256SUMS.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Release download failed' }
+
+          $line = Get-Content package/SHA256SUMS.txt | Where-Object { $_.EndsWith("  $archive") }
+          if (-not $line) { throw 'Package checksum missing' }
+          $expected = ($line -split '\s+')[0]
+          $actual = (Get-FileHash "package/$archive" -Algorithm SHA256).Hash
+          if ($actual -ne $expected) { throw 'Package checksum mismatch' }
+          Expand-Archive "package/$archive" package/unpacked
+
+          $app = (Resolve-Path package/unpacked/BDONImmersiveHome/BDONImmersiveHome.exe).Path
+          $images = New-Item -ItemType Directory images
+          Add-Type -AssemblyName System.Drawing
+          foreach ($characters in 0, 1) {
+            $path = Join-Path $images.FullName "characters-$characters.png"
+            $process = Start-Process $app -ArgumentList @('--snapshot', $path, '640', '360', '30001', "$characters") -PassThru
+            if (-not $process.WaitForExit(120000)) {
+              $process.Kill()
+              throw 'Rendering timed out'
+            }
+            if ($process.ExitCode -ne 0) { throw "Rendering failed: $($process.ExitCode)" }
+            $image = [System.Drawing.Bitmap]::new($path)
+            try {
+              if ($image.Width -ne 640 -or $image.Height -ne 360) { throw 'Wrong image dimensions' }
+              $colors = [System.Collections.Generic.HashSet[int]]::new()
+              for ($y = 0; $y -lt $image.Height; $y += 20) {
+                for ($x = 0; $x -lt $image.Width; $x += 20) {
+                  [void]$colors.Add($image.GetPixel($x, $y).ToArgb())
+                }
+              }
+              if ($colors.Count -lt 20) { throw 'Rendered image is blank' }
+              Write-Output "Rendered characters=$characters, sampled colors=$($colors.Count)"
+            } finally {
+              $image.Dispose()
+            }
+          }
+          if ((Get-FileHash images/characters-0.png).Hash -eq (Get-FileHash images/characters-1.png).Hash) {
+            throw 'Character visibility did not change the image'
+          }
+
+      - name: Save rendered images
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-render
+          path: images/*.png
+          if-no-files-found: warn

@@ -28,12 +28,22 @@ def main():
             }))
             subprocess.run(["clang", "-x", "c", "-o", str(binary), "-"],
                            input=f"int main(void) {{ return {version}; }}", text=True, check=True)
+            extension = app / "Contents/PlugIns/BDONWallpaper.appex/Contents"
+            (extension / "MacOS").mkdir(parents=True)
+            extension_id = APP_ID + ".wallpaper"
+            (extension / "Info.plist").write_bytes(plistlib.dumps({
+                "CFBundleIdentifier": extension_id, "CFBundleExecutable": "Wallpaper",
+                "CFBundlePackageType": "XPC!", "CFBundleVersion": str(version),
+            }))
+            subprocess.run(["clang", "-x", "c", "-o", str(extension / "MacOS/Wallpaper"), "-"],
+                           input="int main(void) { return 0; }", text=True, check=True)
             signer = REPO / "macos/sign_app.py"
             command = ["python3", str(signer), str(app)] if signer.exists() else [
                 "codesign", "--force", "--deep", "--sign", "-", str(app)]
             subprocess.run(command, check=True, capture_output=True)
             subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
             identities.append(requirement(app))
+            assert extension_id in requirement(extension.parent), "nested extension lost its own identity"
         assert identities[0] == identities[1], "code identity changes on every update"
         assert APP_ID in identities[0] and "cdhash" not in identities[0]
         print("PASS: code identity stays stable across different binaries")

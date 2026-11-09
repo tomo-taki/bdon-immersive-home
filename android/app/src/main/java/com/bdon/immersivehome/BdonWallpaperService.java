@@ -17,6 +17,7 @@ import android.view.SurfaceHolder;
  * shuffle timer lives here in Java and rotates the spot from the extracted index.
  */
 public final class BdonWallpaperService extends WallpaperService {
+    private static final long MINUTE_MS = 60_000L;
 
     /**
      * Explicit in-app broadcast SettingsActivity sends after writing any pref, so
@@ -69,7 +70,15 @@ public final class BdonWallpaperService extends WallpaperService {
         private Prefs prefs;
         private SpotIndex index;
         private final Handler handler = new Handler(Looper.getMainLooper());
-        private Runnable shuffleTick;
+        private final ShuffleTimer shuffleTimer = new ShuffleTimer(new ShuffleTimer.Queue() {
+            @Override public void post(Runnable task, long delayMs) {
+                handler.postDelayed(task, delayMs);
+            }
+
+            @Override public void remove(Runnable task) {
+                handler.removeCallbacks(task);
+            }
+        }, this::shuffleSpot);
         private BroadcastReceiver screenReceiver;
         private BroadcastReceiver settingsReceiver;
 
@@ -212,6 +221,8 @@ public final class BdonWallpaperService extends WallpaperService {
         public void onVisibilityChanged(boolean visible) {
             super.onVisibilityChanged(visible);
             NativeWallpaper.nativeSetVisible(handle, visible);
+            shuffleTimer.setVisibility(visible
+                    ? ShuffleTimer.Visibility.VISIBLE : ShuffleTimer.Visibility.HIDDEN);
             if (visible) {
                 // Reconcile from the single source: re-read prefs (a broadcast may
                 // have arrived while this engine was paused) and re-push, so home and
@@ -222,7 +233,7 @@ public final class BdonWallpaperService extends WallpaperService {
                 pushSettings();
                 scheduleShuffle();
             } else {
-                handler.removeCallbacks(shuffleTick);
+                shuffleTimer.stop();
             }
         }
 
@@ -234,7 +245,7 @@ public final class BdonWallpaperService extends WallpaperService {
 
         @Override
         public void onDestroy() {
-            handler.removeCallbacks(shuffleTick);
+            shuffleTimer.stop();
             if (screenReceiver != null) {
                 try { BdonWallpaperService.this.unregisterReceiver(screenReceiver); }
                 catch (IllegalArgumentException ignored) { /* already unregistered */ }
@@ -265,30 +276,34 @@ public final class BdonWallpaperService extends WallpaperService {
         }
 
         private void scheduleShuffle() {
-            handler.removeCallbacks(shuffleTick);
-            if (!prefs.shuffle() || index == null || index.size() < 2) return;
+            shuffleTimer.stop();
+            if (!prefs.shuffle() || index == null || index.size() < 2) {
+                return;
+            }
             // Only the interval mode uses the timer; screen-on mode rotates from the
             // SCREEN_OFF receiver instead, so no periodic tick is scheduled for it.
-            if (prefs.shuffleMode() != Prefs.SHUFFLE_MODE_INTERVAL) return;
-            final long periodMs = (long) prefs.shuffleIntervalMinutes() * 60_000L;
-            shuffleTick = new Runnable() {
-                @Override public void run() {
-                    // One timer fires per engine; de-dup so home and lock rotate to the
-                    // SAME scene (like the screen-off path) instead of each picking its own.
-                    if (claimShufflePick()) {
-                        String next = index.randomDirExcept(prefs.spotDir());
-                        if (next != null) {
-                            prefs.setSpotDirNow(next);
-                            Intent b = new Intent(ACTION_SETTINGS_CHANGED);
-                            b.setPackage(getPackageName());
-                            b.putExtra(EXTRA_SPOT_DIR, next);
-                            sendBroadcast(b);
-                        }
-                    }
-                    handler.postDelayed(this, periodMs);
-                }
-            };
-            handler.postDelayed(shuffleTick, periodMs);
+            if (prefs.shuffleMode() != Prefs.SHUFFLE_MODE_INTERVAL) {
+                return;
+            }
+            final long periodMs = (long) prefs.shuffleIntervalMinutes() * MINUTE_MS;
+            shuffleTimer.schedule(periodMs);
+        }
+
+        private void shuffleSpot() {
+            // Home and lock share one pick; preference callbacks may reschedule it.
+            if (!claimShufflePick()) {
+                return;
+            }
+            String next = index.randomDirExcept(prefs.spotDir());
+            if (next == null) {
+                return;
+            }
+
+            prefs.setSpotDirNow(next);
+            Intent broadcast = new Intent(ACTION_SETTINGS_CHANGED);
+            broadcast.setPackage(getPackageName());
+            broadcast.putExtra(EXTRA_SPOT_DIR, next);
+            sendBroadcast(broadcast);
         }
     }
 }

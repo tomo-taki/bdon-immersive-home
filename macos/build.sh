@@ -34,12 +34,17 @@ tools/spots/finish_spots.sh .build/release/BDONImmersiveHome
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/data"
 cp ".build/release/BDONImmersiveHome" "$APP/Contents/MacOS/BDONImmersiveHome"
+mkdir -p "$APP/Contents/Frameworks"
+ditto .build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework \
+    "$APP/Contents/Frameworks/Sparkle.framework"
 # Spot data, thumbnails and band logos (SpotCatalog reads Resources/data).
-cp -R data/spots data/thumbs assets/bands "$APP/Contents/Resources/data/"
+cp -RH data/spots data/thumbs assets/bands "$APP/Contents/Resources/data/"
 
 # App icon (Takamatsu Tomori) and the monochrome menu-bar template icon.
 cp macos/Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp macos/Resources/menubar.png macos/Resources/menubar@2x.png "$APP/Contents/Resources/"
+cp .build/checkouts/PaperSaver/LICENSE "$APP/Contents/Resources/PaperSaver-LICENSE.txt"
+cp .build/artifacts/sparkle/Sparkle/LICENSE "$APP/Contents/Resources/Sparkle-LICENSE.txt"
 
 # Version shown in 설정 > 정보: build date and the short commit hash the
 # build was made from ("dev" when the tree is not a git repository).
@@ -68,6 +73,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+python3 "$ROOT/macos/sparkle_config.py" "$APP"
+python3 "$ROOT/macos/build_extension.py" "$APP"
 
 # Ad-hoc signature so macOS will launch it locally.
 python3 "$ROOT/macos/sign_app.py" "$APP"

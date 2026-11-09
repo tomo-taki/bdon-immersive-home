@@ -32,3 +32,6 @@ swiftc "$REPO/macos/Sources/Render/Math.swift" "$REPO/macos/Sources/Render/Spot.
 "$CXX" -std=c++17 -O2 -I "$REPO/shared/third_party" \
     "$HERE/camera_test.cpp" -o "$TMP/camera_test"
 "$TMP/camera_test" "$SPOTS" "$TMP/camera-poses.json"
+
+"$CXX" -std=c++17 -O2 "$HERE/frame_test.cpp" -o "$TMP/frame_test"
+"$TMP/frame_test"

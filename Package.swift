@@ -7,6 +7,10 @@ import PackageDescription
 let package = Package(
     name: "BDONImmersiveHome",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        .package(url: "https://github.com/AerialScreensaver/PaperSaver.git", exact: "0.4.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", exact: "2.10.1"),
+    ],
     targets: [
         // Official spine-c 4.2 runtime (sparse clone of spine-runtimes, branch 4.2).
         .target(
@@ -20,9 +24,11 @@ let package = Package(
         .target(name: "SpineBridge", dependencies: ["SpineC"], path: "shared/spine-bridge"),
         .executableTarget(
             name: "BDONImmersiveHome",
-            dependencies: ["SpineBridge"],
+            dependencies: ["SpineBridge", .product(name: "PaperSaverKit", package: "PaperSaver"),
+                           .product(name: "Sparkle", package: "Sparkle")],
             path: "macos/Sources",
-            linkerSettings: [.linkedFramework("Metal"), .linkedFramework("MetalKit"), .linkedFramework("MetalFX")]
+            linkerSettings: [.linkedFramework("Metal"), .linkedFramework("MetalKit"), .linkedFramework("MetalFX"),
+                             .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
     ]
 )

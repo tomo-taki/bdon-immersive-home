@@ -48,6 +48,7 @@ final class WallpaperSettings: ObservableObject {
     private static let intervalKey = "shuffleInterval"
     private static let easterEggKey = "easterEgg"
     private static let lockScreenKey = "lockScreen"
+    private static let modeKey = "wallpaperMode"
     private static let defaultSpot = "30001"
 
     @Published var spotId: String {
@@ -86,9 +87,19 @@ final class WallpaperSettings: ObservableObject {
         didSet { UserDefaults.standard.set(lockScreen, forKey: Self.lockScreenKey) }
     }
 
+    @Published var wallpaperMode: WallpaperMode {
+        didSet { UserDefaults.standard.set(wallpaperMode.rawValue, forKey: Self.modeKey) }
+    }
+
     var spot: Spot? {
         SpotCatalog.spot(id: spotId) ?? SpotCatalog.spots.first
     }
+
+    var cursorSupport: CursorSupport {
+        spot.map { SpotCatalog.cursorSupport(for: $0) } ?? .unknown
+    }
+
+    var cursorEnabled: Bool { cursorParallax && cursorSupport == .available }
 
     private init() {
         let defaults = UserDefaults.standard
@@ -106,6 +117,7 @@ final class WallpaperSettings: ObservableObject {
         shuffleInterval = interval ?? .minutes10
         easterEgg = defaults.string(forKey: Self.easterEggKey).flatMap(EasterEgg.init(rawValue:)) ?? .none
         lockScreen = defaults.object(forKey: Self.lockScreenKey) as? Bool ?? true
+        wallpaperMode = defaults.string(forKey: Self.modeKey).flatMap(WallpaperMode.init(rawValue:)) ?? .desktop
     }
 
     // MARK: - Shuffle pool

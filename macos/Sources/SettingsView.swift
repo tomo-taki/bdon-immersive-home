@@ -22,6 +22,7 @@ final class SettingsNav: ObservableObject {
         case characters
         case parallax
         case lockScreen
+        case native
         case shuffle
         case interval
     }
@@ -49,6 +50,7 @@ struct SettingsView: View {
     @ObservedObject var settings: WallpaperSettings
     @ObservedObject var nav: SettingsNav
     @ObservedObject var lockScreenAccess = LockScreenAccess.shared
+    @ObservedObject private var native = NativeWallpaper.shared
 
     private static let tabHeight: CGFloat = 46
     private static let tabSpacing: CGFloat = 18
@@ -190,8 +192,9 @@ struct SettingsView: View {
                     switch nav.section {
                     case .display:
                         onOffPill(.characters, "캐릭터 표시", $settings.showCharacters)
-                        onOffPill(.parallax, "커서 따라 시점 이동", $settings.cursorParallax)
+                        parallaxPill
                         lockScreenPill
+                        nativePill
                     case .shuffle:
                         onOffPill(.shuffle, "장면 셔플", $settings.shuffle, badge: settings.shuffle ? "적용 중" : nil)
                         intervalPill
@@ -228,6 +231,30 @@ struct SettingsView: View {
         }
     }
 
+    private var parallaxPill: some View {
+        let support = settings.cursorSupport
+        let available = support == .available
+        return VStack(alignment: .leading, spacing: 8) {
+            OptionPill(title: "커서 따라 시점 이동",
+                       value: available ? (settings.cursorParallax ? "ON" : "OFF") : "사용 불가",
+                       enabled: available, badge: support == .fixed ? "고정 시점 장면" : nil,
+                       expanded: available && nav.expanded == .parallax,
+                       action: { nav.toggle(.parallax) }) {
+                onOffChoice($settings.cursorParallax)
+            }
+            if let explanation = support.explanation {
+                cursorNotice(explanation)
+            } else if settings.wallpaperMode == .integrated {
+                cursorNotice("통합 모드에서는 바탕화면에서만 동작합니다. 잠금 화면과 화면 보호기는 고정 시점을 사용합니다.")
+            }
+        }
+    }
+
+    private func cursorNotice(_ text: String) -> some View {
+        Text(text).font(Theme.font(12)).foregroundStyle(.white.opacity(0.85))
+            .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 20)
+    }
+
     /// Says why the lock screen keeps its picture when macOS's wallpaper
     /// cache is closed to the app (LockScreenAccess).
     private var lockScreenPill: some View {
@@ -247,6 +274,36 @@ struct SettingsView: View {
                     CapsuleButton(title: "시스템 설정 열기", action: LockScreenAccess.openSettings)
                 }
             }
+        }
+        .disabled(settings.wallpaperMode == .integrated)
+    }
+
+    private var nativePill: some View {
+        OptionPill(title: "배경·화면 보호기 통합", value: settings.wallpaperMode == .integrated ? "ON" : "OFF",
+                   enabled: NativeWallpaper.supported, badge: nativeBadge,
+                   expanded: nav.expanded == .native, action: { nav.toggle(.native) }) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 16) {
+                    RadioChoice(title: "OFF", selected: settings.wallpaperMode == .desktop) { settings.wallpaperMode = .desktop }
+                    RadioChoice(title: "ON", selected: settings.wallpaperMode == .integrated) { settings.wallpaperMode = .integrated }
+                }
+                Text("같은 장면을 배경 화면, 화면 보호기와 잠금 화면에 사용합니다. macOS 26 이상에서 지원합니다.")
+                    .font(Theme.font(12)).foregroundStyle(.white.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+                if case .failed(let message) = native.state {
+                    Text(message).font(Theme.font(12)).foregroundStyle(.white)
+                    CapsuleButton(title: "다시 적용", action: native.refresh)
+                }
+            }
+        }
+    }
+
+    private var nativeBadge: String? {
+        switch native.state {
+        case .desktop: return NativeWallpaper.supported ? nil : "macOS 26 필요"
+        case .applying: return "적용 중"
+        case .active: return "사용 중"
+        case .failed: return "적용 실패"
         }
     }
 
@@ -272,6 +329,7 @@ struct SettingsView: View {
             settings.showCharacters = true
             settings.cursorParallax = true
             settings.lockScreen = true
+            settings.wallpaperMode = .desktop
         case .shuffle:
             settings.shuffle = false
             settings.shuffleInterval = .minutes10

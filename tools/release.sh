@@ -77,6 +77,8 @@ stage_mac() {
   [ "$dmg" -nt "$plist" ] || fail "$dmg is older than the app: run macos/make_dmg.sh"
   date="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")"
   cp "$dmg" "$OUT/"
+  python3 macos/create_appcast.py --dmg "$dmg" --notes "$NOTES" --output "$OUT/appcast.xml" \
+    --url-prefix "https://github.com/$REPO/releases/download/b$COUNT/"
   title "$date ($COMMIT)"
 }
 

@@ -3,6 +3,19 @@ import SwiftUI
 
 // `--snapshot <out.png> [width height] [spotId] [chars 0|1]` renders one frame and exits (QA).
 let args = CommandLine.arguments
+if MainActor.assumeIsolated({ UpdateQA.writeReceipt() }) { exit(EXIT_SUCCESS) }
+if let flag = args.firstIndex(of: "--update-test"), flag + 1 < args.count, AppIdentity.isDevBuild {
+    let app = NSApplication.shared
+    let runner = MainActor.assumeIsolated { UpdateQA(output: URL(fileURLWithPath: args[flag + 1])) }
+    app.delegate = runner
+    withExtendedLifetime(runner) { app.run() }
+    exit(EXIT_SUCCESS)
+}
+if let flag = args.firstIndex(of: "--native-test"), flag + 2 < args.count, AppIdentity.isDevBuild {
+    guard let action = NativeQA.Action(rawValue: args[flag + 1]) else { exit(EXIT_FAILURE) }
+    let output = URL(fileURLWithPath: args[flag + 2])
+    exit(MainActor.assumeIsolated { NativeQA.run(action: action, output: output) })
+}
 if let flag = args.firstIndex(of: "--snapshot"), flag + 1 < args.count {
     let out = URL(fileURLWithPath: args[flag + 1])
     let rest = Array(args.dropFirst(flag + 2))
@@ -64,6 +77,7 @@ if let flag = settingsShot ?? aboutShot, flag + 1 < args.count {
     case "characters": nav.expanded = .characters
     case "parallax": nav.expanded = .parallax
     case "lockScreen": nav.expanded = .lockScreen
+    case "native": nav.expanded = .native
     case "shuffle": nav.expanded = .shuffle
     case "interval": nav.expanded = .interval
     default: break

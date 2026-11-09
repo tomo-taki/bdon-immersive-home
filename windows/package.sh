@@ -33,8 +33,8 @@ package_arch() {
   cp "$HERE/README-ko.txt" "$root/README-ko.txt"
 
   # data/: spots, thumbs, bands (copied verbatim, never modified).
-  cp -R "$DATA/spots" "$root/data/spots"
-  cp -R "$DATA/thumbs" "$root/data/thumbs"
+  cp -RH "$DATA/spots" "$root/data/spots"
+  cp -RH "$DATA/thumbs" "$root/data/thumbs"
   cp -R "$BANDS" "$root/data/bands"
 
   # Drop macOS cruft that scatters into copies.

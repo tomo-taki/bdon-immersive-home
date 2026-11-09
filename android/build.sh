@@ -176,7 +176,7 @@ cd "$OUT/apk"
 # the APK stays a container of already-compressed PNG/JPEG/GLB.
 STAGE="$OUT/assetstage"
 mkdir -p "$STAGE/assets"
-cp -R "$DATA" "$STAGE/assets/spots"
+cp -RH "$DATA" "$STAGE/assets/spots"
 
 # Settings-UI images (not extracted to disk -- read from the APK on the UI thread):
 #   assets/thumbs/<id>.jpg  -- scene cards, downsampled from data/thumbs

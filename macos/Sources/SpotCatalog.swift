@@ -39,6 +39,17 @@ enum SpotCatalog {
         spots.first { $0.id == id }
     }
 
+    static func cursorSupport(for spot: Spot) -> CursorSupport {
+        if let cached = cursorCapabilities[spot.id] { return cached }
+        guard let file = dataRoot?.appendingPathComponent("spots/\(spot.dir)/spot.json"),
+              let data = try? Data(contentsOf: file) else { return .unknown }
+        let support = CursorSupport.decode(data)
+        cursorCapabilities[spot.id] = support
+        return support
+    }
+
+    private static var cursorCapabilities: [String: CursorSupport] = [:]
+
     /// Thumbnail with or without characters (`<id>.jpg` / `<id>_bg.jpg`).
     /// Cached: the settings grid asks for all 39 on every redraw.
     static func thumbnail(for spot: Spot, characters: Bool) -> NSImage? {
@@ -78,7 +89,11 @@ enum SpotCatalog {
     private static let bandsDirectory: URL? =
         bundled.map { $0.appendingPathComponent("bands") } ?? existing(repo.appendingPathComponent("assets/bands"))
 
-    private static let bundled: URL? = Bundle.main.resourceURL.flatMap { existing($0.appendingPathComponent("data")) }
+    private static let bundled: URL? = {
+        if let own = Bundle.main.resourceURL.flatMap({ existing($0.appendingPathComponent("data")) }) { return own }
+        guard let plugins = Bundle.main.builtInPlugInsURL else { return nil }
+        return existing(plugins.appendingPathComponent("BDONWallpaper.appex/Contents/Resources/data"))
+    }()
     private static let repo = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 
     private static func existing(_ url: URL) -> URL? {

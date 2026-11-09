@@ -62,6 +62,7 @@ enum LockScreenWallpaper {
             }
             DispatchQueue.main.async {
                 do {
+                    try LockScreenLink.remember()
                     try NSWorkspace.shared.setDesktopImageURL(url, for: screen, options: [
                         .imageScaling: NSImageScaling.scaleProportionallyUpOrDown.rawValue,
                         .allowClipping: true,
@@ -69,8 +70,17 @@ enum LockScreenWallpaper {
                     EventLog.write("desktop picture of display \(key) -> \(url.lastPathComponent) (\(spotId))")
                 } catch {
                     EventLog.write("setDesktopImageURL failed: \(error)")
+                    return
                 }
-                tidy()
+                queue.async {
+                    do {
+                        try LockScreenLink.apply(url)
+                        DispatchQueue.main.async { tidy() }
+                    } catch {
+                        // Keep the previous idle image if linking failed.
+                        EventLog.write("lock screen link failed: \(error)")
+                    }
+                }
             }
         }
     }
@@ -83,6 +93,13 @@ enum LockScreenWallpaper {
         let showing = Set(screens.compactMap { NSWorkspace.shared.desktopImageURL(for: $0)?.path })
         let spotIds = SpotCatalog.spots.map(\.id)
         queue.async {
+            if !optionOn {
+                do { try LockScreenLink.restore(directories: directories) }
+                catch {
+                    EventLog.write("lock screen restore failed: \(error)")
+                    return
+                }
+            }
             let paths = stills().map(\.path)
             // The first build's folder keeps only what a display shows.
             let recent = LockScreenCache.newestTwo(paths.filter { $0.hasPrefix(directory.path + "/") }, keys: keys)
@@ -106,6 +123,11 @@ enum LockScreenWallpaper {
         UserDefaults.standard.removeObject(forKey: originalsKey)
         let spotIds = SpotCatalog.spots.map(\.id)
         queue.async {
+            do { try LockScreenLink.restore(directories: directories) }
+            catch {
+                EventLog.write("lock screen restore failed: \(error)")
+                return
+            }
             let paths = stills().map(\.path)
             remove(paths, keeping: showing.intersection(paths), keys: [], spotIds: spotIds)
         }

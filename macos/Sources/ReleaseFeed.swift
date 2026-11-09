@@ -22,6 +22,7 @@ enum ReleaseFeed {
         let package: URL
         let checksums: URL
         let page: URL
+        var appcast: URL? = nil
     }
 
     static let checksumName = "SHA256SUMS.txt"
@@ -74,7 +75,8 @@ enum ReleaseFeed {
             : summaries.map { "\($0.title)\n\($0.text)" }.joined(separator: "\n\n")
 
         return Update(build: newest.build, title: newest.release.title, notes: notes,
-                      package: packageURL, checksums: checksums, page: newest.release.html_url)
+                      package: packageURL, checksums: checksums, page: newest.release.html_url,
+                      appcast: newest.release.asset("appcast.xml"))
     }
 
     /// "b42" -> 42; any other tag is not one of ours.

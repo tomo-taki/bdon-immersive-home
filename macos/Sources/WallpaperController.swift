@@ -26,6 +26,12 @@ final class WallpaperController {
         observeQA()
         observeSettings()
         observeLockScreenAccess()
+        MainActor.assumeIsolated {
+            NativeWallpaper.shared.$state.receive(on: RunLoop.main)
+                .sink { [weak self] state in self?.nativeState(state) }
+                .store(in: &subscriptions)
+            NativeWallpaper.shared.start(settings: settings)
+        }
         pointerTimer = Timer.scheduledTimer(withTimeInterval: Self.pointerInterval, repeats: true) {
             [weak self] _ in self?.updatePointer()
         }
@@ -33,6 +39,21 @@ final class WallpaperController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
             MemoryProbe.log(self?.views ?? [])
         }
+    }
+
+    private func nativeState(_ state: NativeWallpaper.State) {
+        if state == .active {
+            views.forEach { $0.setRunning(false) }
+            windows.forEach { $0.close() }
+            views.removeAll()
+            windows.removeAll()
+            screenIds.removeAll()
+            lastPointer.removeAll()
+            return
+        }
+        guard state != .applying else { return }
+        rebuildWindows()
+        if state == .desktop, settings.lockScreen { views.forEach { $0.requestSettle() } }
     }
 
     // MARK: - Settings
@@ -102,14 +123,14 @@ final class WallpaperController {
     private func observeLockScreenAccess() {
         let access = LockScreenAccess.shared
         access.onGranted = { [weak self] in
-            guard let self else { return }
+            guard let self, self.settings.wallpaperMode == .desktop else { return }
             LockScreenWallpaper.tidy(optionOn: self.settings.lockScreen)
             if self.settings.lockScreen {
                 self.views.forEach { $0.requestSettle() }
             }
         }
         access.refresh()
-        LockScreenWallpaper.tidy(optionOn: settings.lockScreen)
+        if settings.wallpaperMode == .desktop { LockScreenWallpaper.tidy(optionOn: settings.lockScreen) }
         // Back from System Settings.
         NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil,
                                                queue: .main) { _ in access.refresh() }
@@ -143,6 +164,7 @@ final class WallpaperController {
     /// Reloading a page costs seconds of a blank window, so it only happens
     /// for a display the app has not seen.
     private func rebuildWindows() {
+        guard MainActor.assumeIsolated({ NativeWallpaper.shared.state != .active }) else { return }
         guard let spot = settings.spot else {
             EventLog.write("No Spot data bundled")
             return
@@ -253,7 +275,7 @@ final class WallpaperController {
             self.retryLoad(dir, in: view)
         }
         view.onSettled = { [weak self, weak window] view in
-            guard let self, self.settings.lockScreen, let screen = window?.screen,
+            guard let self, self.settings.wallpaperMode == .desktop, self.settings.lockScreen, let screen = window?.screen,
                   let spotId = view.spotId, let image = view.captureStill() else { return }
             LockScreenWallpaper.apply(image, to: screen, spotId: spotId)
         }

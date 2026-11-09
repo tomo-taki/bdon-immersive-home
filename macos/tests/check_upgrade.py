@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise real download validation in isolated app bundles; never install."""
+"""Check pre-Sparkle consumers against a DMG; never install."""
 import argparse
 import functools
 import hashlib
@@ -15,6 +15,7 @@ REPO = Path(__file__).resolve().parents[2]
 RELEASE_ID = "com.togawa.bdon-immersive-home"
 LEGACY_ID = "moe.local.bdon-immersive-home"
 LEGACY_REV = "d45c502"
+PRE_SPARKLE_REV = "a1d22ab69601ce9a627e805a67cdd682cb6f99f6"
 PACKAGE = "BDONImmersiveHome.dmg"
 CHECKSUMS = "SHA256SUMS.txt"
 RUNNER = '''
@@ -74,8 +75,8 @@ def main():
                 work = root / consumer
                 work.mkdir()
                 source = REPO / "macos/Sources"
-                updater = (source / "Updater.swift").read_text() if consumer == "current" else subprocess.check_output(
-                    ["git", "-C", str(REPO), "show", f"{LEGACY_REV}:Sources/BDONImmersiveHome/Updater.swift"], text=True)
+                revision = f"{PRE_SPARKLE_REV}:macos/Sources/Updater.swift" if consumer == "current" else f"{LEGACY_REV}:Sources/BDONImmersiveHome/Updater.swift"
+                updater = subprocess.check_output(["git", "-C", str(REPO), "show", revision], text=True)
                 swift = work / "consumer.swift"
                 swift.write_text(updater + RUNNER)
                 app = work / "Consumer.app/Contents"

@@ -35,6 +35,8 @@ mkdir -p "$WORK/stage"
 ditto "$APP" "$STAGED"
 RELEASE_ID="$(cat "$ROOT/macos/app-id.txt")"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $RELEASE_ID" "$STAGED/Contents/Info.plist"
+python3 "$ROOT/macos/sparkle_config.py" "$STAGED"
+python3 "$ROOT/macos/build_extension.py" "$STAGED"
 python3 "$ROOT/macos/sign_app.py" "$STAGED"
 
 rm -f "$DMG"

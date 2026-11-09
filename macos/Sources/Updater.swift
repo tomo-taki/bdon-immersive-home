@@ -1,19 +1,7 @@
 import AppKit
-import CryptoKit
 import Foundation
 
-/// Self-update from GitHub Releases.
-///
-///   GET api.github.com/repos/<repo>/releases -> ReleaseFeed: the newest release
-///     with BDONImmersiveHome.dmg + SHA256SUMS.txt (tools/release.sh) whose tag
-///     "b<commit count>" beats CFBundleVersion (also the commit count), and its
-///     human-written summary for 설정 > 정보.
-///
-///   download DMG -> verify SHA-256 -> mount, copy the .app -> same bundle id?
-///   -> replace this .app in place -> relaunch.
-///
-/// A file URLSession downloads carries no quarantine flag, so the updated app
-/// opens without the Gatekeeper prompt the first install needed.
+/// GitHub discovers platform releases; Sparkle verifies, installs and relaunches.
 @MainActor
 final class Updater: ObservableObject {
     static let shared = Updater()
@@ -48,7 +36,7 @@ final class Updater: ObservableObject {
     private static let defaultRepo = "tomo-taki/bdon-immersive-home"
 
     private var timer: Timer?
-    private var progress: NSKeyValueObservation?
+    private var installer: SparkleDriver?
 
     private static var info: [String: Any] { Bundle.main.infoDictionary ?? [:] }
     private static var repo: String { info["BDONUpdateRepo"] as? String ?? defaultRepo }
@@ -105,132 +93,26 @@ final class Updater: ObservableObject {
 
     func install() {
         guard case .available(let release) = state else { return }
+        guard let feed = release.appcast else {
+            state = .failed("이 업데이트에는 서명된 업데이트 피드가 없습니다")
+            return
+        }
         state = .downloading(release, 0)
-        Task {
-            do {
-                let app = try await download(release)
-                state = .installing(release)
-                try Self.replaceRunningApp(with: app)
-                Self.relaunch()
-            } catch {
-                progress = nil
-                state = .failed(UpdateFailure.message(error))
-                EventLog.write("update failed: \(error)")
-                NSWorkspace.shared.open(release.page)
+        let driver = SparkleDriver(feed: feed, build: release.build) { [weak self] event in
+            guard let self else { return }
+            switch event {
+            case .downloading(let fraction): self.state = .downloading(release, fraction)
+            case .installing: self.state = .installing(release)
+            case .failed(let error):
+                self.state = .failed("업데이트를 설치하지 못했습니다. 다시 확인해주세요")
+                EventLog.write("Sparkle update failed: \(error)")
             }
         }
-    }
-
-    /// Downloads and verifies the package; returns the unpacked .app.
-    private func download(_ release: Release) async throws -> URL {
-        let work = FileManager.default.temporaryDirectory.appendingPathComponent("BDONUpdate-\(release.build)")
-        try? FileManager.default.removeItem(at: work)
-        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
-
-        let (sums, response) = try await URLSession.shared.data(from: release.checksums)
-        guard (response as? HTTPURLResponse)?.statusCode == Self.httpOK else {
-            throw URLError(.badServerResponse)
-        }
-        guard let expected = Self.checksum(for: Self.packageName, in: sums) else {
-            throw UpdateFailure.missingChecksum
-        }
-
-        let package = work.appendingPathComponent(Self.packageName)
-        let downloaded: URL = try await withCheckedThrowingContinuation { continuation in
-            let task = URLSession.shared.downloadTask(with: release.package) { url, response, error in
-                guard let url, (response as? HTTPURLResponse)?.statusCode == Self.httpOK else {
-                    return continuation.resume(throwing: error ?? URLError(.badServerResponse))
-                }
-                // The temporary file is deleted when this handler returns.
-                do {
-                    try FileManager.default.moveItem(at: url, to: package)
-                    continuation.resume(returning: package)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-            progress = task.progress.observe(\.fractionCompleted) { [weak self] p, _ in
-                let fraction = p.fractionCompleted
-                Task { @MainActor in
-                    if case .downloading(let release, _) = self?.state { self?.state = .downloading(release, fraction) }
-                }
-            }
-            task.resume()
-        }
-        progress = nil
-
-        guard try Self.sha256(of: downloaded) == expected else {
-            throw UpdateFailure.checksumMismatch
-        }
-
-        let unpacked = work.appendingPathComponent("app")
-        let volume = work.appendingPathComponent("volume")
-        try Self.run("/usr/bin/hdiutil", ["attach", downloaded.path, "-nobrowse", "-readonly", "-noautoopen",
-                                          "-mountpoint", volume.path])
-        defer { try? Self.run("/usr/bin/hdiutil", ["detach", volume.path, "-force"]) }
-        let volumeApps = try FileManager.default.contentsOfDirectory(at: volume, includingPropertiesForKeys: nil)
-        guard let source = volumeApps.first(where: { $0.pathExtension == "app" }) else {
-            throw UpdateFailure.missingApp
-        }
-        try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
-        try Self.run("/usr/bin/ditto", [source.path, unpacked.appendingPathComponent(source.lastPathComponent).path])
-        let apps = try FileManager.default.contentsOfDirectory(at: unpacked, includingPropertiesForKeys: nil)
-        guard let app = apps.first(where: { $0.pathExtension == "app" }) else {
-            throw UpdateFailure.missingApp
-        }
-        guard Bundle(url: app)?.bundleIdentifier == Bundle.main.bundleIdentifier else {
-            throw UpdateFailure.identityMismatch
-        }
-        return app
-    }
-
-    /// "hex  name" lines (sha256sum format).
-    private static func checksum(for name: String, in data: Data) -> String? {
-        let text = String(decoding: data, as: UTF8.self)
-        for line in text.split(whereSeparator: \.isNewline) {
-            let parts = line.split(separator: " ", omittingEmptySubsequences: true)
-            if parts.count == 2, parts[1].trimmingCharacters(in: CharacterSet(charactersIn: "*")) == name {
-                return parts[0].lowercased()
-            }
-        }
-        return nil
-    }
-
-    private static func sha256(of url: URL) throws -> String {
-        let chunk = 4 << 20
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        var hash = SHA256()
-        while let data = try handle.read(upToCount: chunk), !data.isEmpty {
-            hash.update(data: data)
-        }
-        return hash.finalize().map { String(format: "%02x", $0) }.joined()
-    }
-
-    /// Swap the bundle on disk; the running process keeps its mapped files.
-    private static func replaceRunningApp(with app: URL) throws {
-        _ = try FileManager.default.replaceItemAt(Bundle.main.bundleURL, withItemAt: app,
-                                                  backupItemName: nil, options: [])
-    }
-
-    /// Start the new copy once this one has exited.
-    private static func relaunch() {
-        let path = Bundle.main.bundleURL.path
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", path]
-        try? task.run()
-        NSApp.terminate(nil)
-    }
-
-    private static func run(_ tool: String, _ arguments: [String]) throws {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: tool)
-        task.arguments = arguments
-        try task.run()
-        task.waitUntilExit()
-        guard task.terminationStatus == 0 else {
-            throw UpdateFailure.toolFailed(URL(fileURLWithPath: tool).lastPathComponent)
+        installer = driver
+        do { try driver.install() }
+        catch {
+            state = .failed("업데이트 서명 설정을 확인해주세요")
+            EventLog.write("Sparkle configuration failed: \(error)")
         }
     }
 }

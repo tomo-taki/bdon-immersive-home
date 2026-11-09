@@ -4,7 +4,7 @@ import ServiceManagement
 
 /// Owns the wallpaper windows, the settings window and the status-bar menu.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let settings = WallpaperSettings.shared
     private lazy var wallpapers = WallpaperController(settings: settings)
     private lazy var settingsWindow = SettingsWindowController(settings: settings)
@@ -94,7 +94,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshMenu() {
         currentItem?.title = settings.spot.map { "\($0.band) · \($0.name)" } ?? "배경 없음"
         charactersItem?.state = settings.showCharacters ? .on : .off
-        parallaxItem?.state = settings.cursorParallax ? .on : .off
+        parallaxItem?.state = settings.cursorEnabled ? .on : .off
+        parallaxItem?.isEnabled = settings.cursorSupport == .available
+        parallaxItem?.toolTip = settings.cursorSupport.explanation
         shuffleItem?.state = settings.shuffle ? .on : .off
         shuffleItem?.title = settings.shuffle ? "장면 셔플 (\(settings.shuffleInterval.label))" : "장면 셔플"
         loginItem?.state = SMAppService.mainApp.status == .enabled ? .on : .off
@@ -102,6 +104,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Actions
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(toggleParallax) else { return menuItem.isEnabled }
+        return settings.cursorSupport == .available
+    }
 
     private func refreshUpdateItem(_ state: Updater.State) {
         guard case .available(let release) = state else {
@@ -130,6 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleParallax() {
+        guard settings.cursorSupport == .available else { return }
         settings.cursorParallax.toggle()
     }
 

@@ -28,6 +28,7 @@
 
 #include "gl_renderer.h"
 #include "gl_stage.h"
+#include "onp_frame.h"
 #include "onp_spot.h"
 
 #define LOG_TAG "BDONWallpaper"
@@ -122,9 +123,10 @@ public:
 private:
     void renderLoop() {
         int idleFrames = 0;
-        double clockPrev = nowSeconds();
+        FrameClock clock;
 
         while (running_) {
+            double frameStarted = nowSeconds();
             // Snapshot shared state.
             ANativeWindow* newWindow = nullptr;
             bool surfaceDirty, visible, settingsDirty;
@@ -138,6 +140,7 @@ private:
                 // preload build or a screen-off swap counts as work, so the render
                 // thread stays alive to prepare/flip the next scene while hidden.
                 if (!visible_ && !surfaceDirty_ && !screenOffSwap_ && wantNextDir_.empty() && running_) {
+                    clock.reset();
                     cv_.wait(lk, [this] {
                         return !running_ || surfaceDirty_ || visible_ || screenOffSwap_ || !wantNextDir_.empty();
                     });
@@ -155,15 +158,27 @@ private:
             }
 
             if (surfaceDirty) applySurface(newWindow);
-            if (!egl_.ready()) { if (doSwap) finishSwap(); continue; }
+            if (!egl_.ready()) {
+                clock.reset();
+                if (doSwap) {
+                    finishSwap();
+                }
+                continue;
+            }
             if (settingsDirty) { applySettings(settings); settingsApplied_ = true; }
 
             // Screen-off swap: flip to the pre-built next scene (t=0) and draw its
             // first frame into the surface NOW, while invisible, so screen-on shows
             // the new scene from its very first pixel with no load hitch.
-            if (doSwap) { performScreenOffSwap(settings); finishSwap(); continue; }
+            if (doSwap) {
+                clock.reset();
+                performScreenOffSwap(settings);
+                finishSwap();
+                continue;
+            }
 
             if (!visible) {
+                clock.reset();
                 // Invisible but asked to preload: build the next Stage off the hot
                 // path (GL upload on this render thread, which is idle now).
                 if (!wantNext.empty()) buildNextStage(wantNext);
@@ -185,9 +200,7 @@ private:
             parallaxX_ += dx;
             bool cameraMoving = (dx * dx > 1e-8f);
 
-            double t = nowSeconds();
-            double delta = t - clockPrev;
-            clockPrev = t;
+            double delta = clock.tick(nowSeconds());
 
             bool animated = stage_->advance(delta, cameraMoving);
             bool moved = cameraMoving || animated;
@@ -202,7 +215,8 @@ private:
 
             // 30 fps while moving, 5 fps after 30 idle frames (behaviour 4).
             int frameMs = (idleFrames >= 30) ? 200 : 33;
-            waitForNextFrame(frameMs);
+            auto elapsedMs = static_cast<uint64_t>((nowSeconds() - frameStarted) * 1000);
+            waitForNextFrame(frameDelay(frameMs, elapsedMs));
         }
         teardownEgl();
     }

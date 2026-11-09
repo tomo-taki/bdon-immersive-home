@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "onp_d3d.h"
+#include "onp_frame.h"
 #include "onp_install.h"
 #include "onp_update.h"
 #include "onp_stage.h"
@@ -43,6 +44,10 @@ static const wchar_t* kWindowClass = L"BDONImmersiveHomeWnd";
 static const UINT WM_APP_TRAY = WM_APP + 1;
 static const UINT WM_APP_UPDATE = WM_APP + 2;   // update status changed (worker thread)
 static const UINT kTrayId = 1;
+static constexpr unsigned kActiveFrameMs = 33;
+static constexpr unsigned kReducedFrameMs = 66;
+static constexpr unsigned kIdleFrameMs = 200;
+static constexpr int kIdleFrameCount = 30;
 // Tray menu command ids.
 enum {
     kCmdSettings = 100, kCmdCharacters, kCmdShuffle, kCmdQuit, kCmdAutostart, kCmdUpdate,
@@ -632,12 +637,13 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
 
     // Frame loop: 30 fps active, 5 fps after 30 idle frames (behaviour 4).
     int idleFrames = 0;
-    DWORD lastTick = GetTickCount();
+    FrameClock clock;
     DWORD lastShuffle = GetTickCount();
     DWORD lastMemLog = GetTickCount();
     bool running = true;
 
     while (running) {
+        ULONGLONG frameStarted = GetTickCount64();
         MSG m;
         while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) {
             if (m.message == WM_QUIT) { running = false; break; }
@@ -682,7 +688,6 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
         }
 
         DWORD now = GetTickCount();
-        double delta = (now - lastTick) / 1000.0;
 
         // Shuffle timer.
         if (g_settings.shuffle && now - lastShuffle >= (DWORD)shuffleIntervalSeconds(g_settings.shuffleInterval) * 1000) {
@@ -706,6 +711,7 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
         wasPaused = paused;
         bool cameraMoving = false;
         if (!paused) {
+            double delta = clock.tick(GetTickCount64() / 1000.0);
             if (g_settings.cursorParallax) cameraMoving = updateParallax();
             bool advanced = false;
             {
@@ -719,13 +725,14 @@ int WINAPI wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int) {
             } else {
                 idleFrames++;
             }
+        } else {
+            clock.reset();
         }
-        lastTick = now;
 
         // Pace: 30 fps active (15 on WARP / battery saver), 5 fps idle/paused.
-        int activeMs = reducedRate() ? 66 : 33;
-        int targetMs = (paused || idleFrames > 30) ? 200 : activeMs;
-        Sleep(targetMs);
+        unsigned activeMs = reducedRate() ? kReducedFrameMs : kActiveFrameMs;
+        unsigned targetMs = (paused || idleFrames > kIdleFrameCount) ? kIdleFrameMs : activeMs;
+        Sleep(frameDelay(targetMs, GetTickCount64() - frameStarted));
     }
 
     destroyWindows();
